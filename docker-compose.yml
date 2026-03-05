@@ -1,0 +1,94 @@
+# Simply Analytics - Docker Compose Configuration
+# 
+# Usage:
+#   Development: docker-compose up
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# For Snowpark Container Services, see snowpark-container-spec.yaml
+
+version: '3.8'
+
+services:
+  # ============================================================
+  # Redis - Distributed Session Store
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: simply-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy volatile-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - simply-network
+
+  # ============================================================
+  # API Server
+  # ============================================================
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: simply-api
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET}
+      - CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY}
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
+      - SIMPLY_METADATA_SCHEMA=SIMPLY_ANALYTICS
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./server/.env
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - simply-network
+
+  # ============================================================
+  # Client (Frontend) - Production Build
+  # ============================================================
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: simply-client
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    environment:
+      - VITE_API_URL=http://api:3001
+    restart: unless-stopped
+    networks:
+      - simply-network
+
+networks:
+  simply-network:
+    driver: bridge
+
+# Persistent volumes
+volumes:
+  redis-data:
+  api-logs:

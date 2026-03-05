@@ -1,0 +1,462 @@
+/**
+ * Authentication Modal - Clean Modern Design
+ */
+
+/* ============================================
+   Overlay & Modal Base
+   ============================================ */
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.auth-modal {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: authModalIn 0.2s ease;
+  overflow: hidden;
+}
+
+@keyframes authModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ============================================
+   Sign In Form
+   ============================================ */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.auth-form-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.auth-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.auth-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.auth-form-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  transition: border-color 0.15s;
+}
+
+.auth-field input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.auth-field input.error {
+  border-color: #ef4444;
+}
+
+.auth-field input::placeholder {
+  color: var(--text-muted);
+}
+
+.auth-field-error {
+  font-size: 13px;
+  color: #ef4444;
+}
+
+.auth-password-wrapper {
+  position: relative;
+}
+
+.auth-password-wrapper input {
+  padding-right: 44px;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.auth-password-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.auth-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.auth-error svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.auth-force-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #dc2626;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.auth-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.auth-submit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-form-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+.auth-form-footer p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ============================================
+   2FA Verification Step
+   ============================================ */
+
+.auth-2fa {
+  padding: 32px;
+  text-align: center;
+}
+
+.auth-2fa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.auth-2fa-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
+
+.auth-2fa-user {
+  margin: 0 0 28px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.auth-2fa-user strong {
+  color: var(--text-primary);
+}
+
+.auth-2fa-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+}
+
+.auth-2fa-icon svg {
+  font-size: 28px;
+  color: var(--accent-color);
+}
+
+/* Individual Digit Boxes */
+.auth-code-section {
+  margin-bottom: 24px;
+}
+
+.auth-code-boxes {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.auth-code-boxes input {
+  width: 48px;
+  height: 56px;
+  padding: 0;
+  font-size: 24px;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  text-align: center;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-primary);
+  border-radius: 10px;
+  color: var(--text-primary);
+  transition: all 0.15s;
+  caret-color: var(--accent-color);
+}
+
+.auth-code-boxes input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.auth-code-boxes input.filled {
+  border-color: var(--accent-color);
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.auth-code-boxes input:disabled {
+  opacity: 0.6;
+}
+
+.auth-verifying {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--accent-color);
+  font-size: 14px;
+}
+
+.auth-code-help {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* Divider */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-primary);
+}
+
+/* Passkey Button */
+.auth-passkey-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.auth-passkey-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-secondary);
+}
+
+.auth-passkey-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-passkey-btn svg {
+  font-size: 18px;
+  color: var(--accent-color);
+}
+
+/* ============================================
+   Spinner Animation
+   ============================================ */
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+
+@media (max-width: 480px) {
+  .auth-overlay {
+    padding: 16px;
+  }
+  
+  .auth-modal {
+    max-width: 100%;
+  }
+  
+  .auth-2fa {
+    padding: 24px 20px;
+  }
+  
+  .auth-code-boxes {
+    gap: 8px;
+  }
+  
+  .auth-code-boxes input {
+    width: 42px;
+    height: 50px;
+    font-size: 20px;
+  }
+  
+  .auth-2fa-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+/* ============================================
+   Dark Mode Adjustments
+   ============================================ */
+
+[data-theme="dark"] .auth-modal,
+.dark .auth-modal {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .auth-code-boxes input.filled,
+.dark .auth-code-boxes input.filled {
+  background: rgba(14, 165, 233, 0.1);
+}
+
+[data-theme="dark"] .auth-error,
+.dark .auth-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}

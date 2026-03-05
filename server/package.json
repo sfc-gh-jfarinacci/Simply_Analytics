@@ -1,0 +1,39 @@
+{
+  "name": "simply-analytics-server",
+  "version": "1.0.0",
+  "description": "Simply Analytics API Server - Snowflake BI Platform",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 nodemon src/index.js",
+    "start": "node src/index.js",
+    "migrate": "node src/db/migrate.js",
+    "migrate:postgres": "node src/db/migrate-postgres.js",
+    "docker:build": "docker build -t simply-analytics-server .",
+    "docker:run": "docker run -p 3001:3001 --env-file .env simply-analytics-server"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^10.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.3.2",
+    "js-yaml": "^4.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "otplib": "^12.0.1",
+    "pg": "^8.11.3",
+    "qrcode": "^1.5.3",
+    "snowflake-sdk": "^1.9.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
