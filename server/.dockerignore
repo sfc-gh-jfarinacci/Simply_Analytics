@@ -1,0 +1,5 @@
+node_modules
+.env
+keys/*.p8
+keys/*.pem
+npm-debug.log

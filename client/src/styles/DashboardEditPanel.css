@@ -1,0 +1,120 @@
+/* Dashboard Edit Panel - Left Sidebar for Widget Configuration */
+
+.dashboard-edit-panel {
+  position: absolute;
+  top: 52px; /* Below toolbar */
+  left: 0;
+  bottom: 0; /* Extends to bottom, includes tab bar area */
+  width: 360px;
+  height: auto;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-subtle);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  
+  /* Slide animation */
+  transform: translateX(-100%);
+  opacity: 0;
+  visibility: hidden;
+  transition: 
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+}
+
+.dashboard-edit-panel.open {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Override WidgetEditor styles for sidebar panel */
+.dashboard-edit-panel .widget-editor-embedded {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+/* Embedded header styling */
+.dashboard-edit-panel .embedded-editor-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+/* Main editor body should fill available space - single column layout */
+.dashboard-edit-panel .embedded-editor-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column !important; /* Force column layout, not row */
+  overflow: hidden;
+}
+
+/* Config panel should fill width and scroll */
+.dashboard-edit-panel .embedded-config-panel {
+  width: 100% !important; /* Override the fixed 260px width */
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 20px;
+  border-right: none !important;
+}
+
+/* Scrollbar styling for config panel */
+.dashboard-edit-panel .embedded-config-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dashboard-edit-panel .embedded-config-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-edit-panel .embedded-config-panel::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+
+.dashboard-edit-panel .embedded-config-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Hide the preview panel - we use the dashboard widget for preview */
+.dashboard-edit-panel .embedded-preview-panel {
+  display: none;
+}
+
+/* Dashboard canvas shift is handled by DashboardView.css using transform */
+/* This avoids triggering widget resize when panel opens */
+
+/* Responsive - on smaller screens, overlay instead of push */
+@media (max-width: 1200px) {
+  .dashboard-edit-panel {
+    width: 320px;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-edit-panel {
+    width: 100%;
+    top: 52px;
+    bottom: 0;
+    height: auto;
+  }
+}
+
+/* Dim other widgets when editing one */
+.dashboard-canvas.panel-open .dashboard-widget:not(.panel-editing) {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.dashboard-canvas.panel-open .dashboard-widget:not(.panel-editing):hover {
+  opacity: 0.9;
+}

@@ -1,0 +1,735 @@
+/* Formula Bar Backdrop - only for portal mode */
+.formula-bar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 9998;
+    animation: backdropFadeIn 0.15s ease-out;
+  }
+  
+  @keyframes backdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  /* Formula Bar Inline - renders directly in sidebar */
+  .formula-bar-inline {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    animation: formulaBarExpand 0.2s ease-out;
+  }
+  
+  .formula-bar-inline.sidebar-inline {
+    margin: 8px 0;
+  }
+  
+  @keyframes formulaBarExpand {
+    0% {
+      opacity: 0;
+      max-height: 0;
+      transform: scaleY(0.8);
+    }
+    100% {
+      opacity: 1;
+      max-height: 200px;
+      transform: scaleY(1);
+    }
+  }
+  
+  /* ============================================
+     Bottom Panel Mode - slides up from bottom
+     ============================================ */
+  .formula-bottom-panel {
+    position: fixed;
+    bottom: 0;
+    left: 360px; /* Account for sidebar */
+    right: 0;
+    z-index: 9999;
+  }
+  
+  /* Blocking overlay - covers the dashboard area to prevent clicks */
+  .formula-blocking-overlay {
+    position: fixed;
+    top: 0;
+    left: 360px;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.15);
+    z-index: -1;
+    cursor: not-allowed;
+    animation: overlayFadeIn 0.2s ease-out;
+  }
+  
+  @media (max-width: 1200px) {
+    .formula-blocking-overlay {
+      left: 320px;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .formula-blocking-overlay {
+      left: 0;
+    }
+  }
+  
+  @media (max-width: 1200px) {
+    .formula-bottom-panel {
+      left: 320px;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .formula-bottom-panel {
+      left: 0;
+    }
+  }
+  
+  .formula-bottom-panel-content {
+    position: relative;
+    background: var(--bg-card);
+    border-top: 2px solid var(--accent-primary);
+    box-shadow: 
+      0 -4px 20px rgba(0, 0, 0, 0.15),
+      0 -12px 40px rgba(0, 0, 0, 0.1);
+    animation: panelReveal 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transform-origin: bottom center;
+  }
+  
+  @keyframes panelReveal {
+    0% {
+      opacity: 0;
+      transform: translateY(20px) scaleY(0.9);
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scaleY(1);
+    }
+  }
+  
+  .formula-bottom-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    animation: contentFadeIn 0.3s ease-out 0.1s both;
+  }
+  
+  .formula-bottom-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    animation: contentFadeIn 0.3s ease-out 0.15s both;
+  }
+  
+  @keyframes contentFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .formula-bottom-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  
+  .formula-bottom-title svg {
+    color: var(--accent-primary);
+    animation: iconPulse 0.4s ease-out 0.2s both;
+  }
+  
+  @keyframes iconPulse {
+    0% {
+      transform: scale(0.8);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.1);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+  
+  .formula-bottom-actions {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .formula-bottom-body .formula-fx {
+    flex-shrink: 0;
+    animation: buttonPop 0.25s ease-out 0.2s both;
+  }
+  
+  .formula-bottom-body .formula-input-wrapper {
+    flex: 1;
+  }
+  
+  .formula-bottom-body .formula-input {
+    font-size: 14px;
+    padding: 10px 14px;
+    animation: inputGlow 0.4s ease-out 0.3s both;
+  }
+  
+  @keyframes buttonPop {
+    0% {
+      transform: scale(0.8);
+      opacity: 0;
+    }
+    70% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+  
+  @keyframes inputGlow {
+    0% {
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.2);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
+    }
+  }
+  
+  /* Autocomplete in bottom panel mode - appears above */
+  .formula-autocomplete.bottom-panel-autocomplete {
+    z-index: 10001;
+    max-height: 350px;
+    animation: autocompleteReveal 0.2s ease-out;
+  }
+  
+  @keyframes autocompleteReveal {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .formula-bar-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    position: relative;
+  }
+  
+  /* Compact layout for sidebar inline mode */
+  .formula-bar-inline.sidebar-inline .formula-bar-content {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  
+  .formula-bar-inline.sidebar-inline .formula-input-wrapper {
+    flex: 1 1 100%;
+    order: 2;
+  }
+  
+  .formula-bar-inline.sidebar-inline .formula-fx {
+    order: 1;
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+  
+  .formula-bar-inline.sidebar-inline .formula-bar-actions {
+    order: 1;
+    margin-left: auto;
+  }
+  
+  .formula-bar-inline.sidebar-inline .formula-cancel-btn,
+  .formula-bar-inline.sidebar-inline .formula-save-btn {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .formula-bar-inline.sidebar-inline .formula-input {
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  
+  .formula-fx {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--accent-primary);
+    background: rgba(var(--accent-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .formula-fx:hover {
+    background: var(--accent-primary);
+    color: white;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+  }
+  
+  /* Formula Input Wrapper */
+  .formula-input-wrapper {
+    flex: 1;
+    position: relative;
+    min-height: 36px;
+  }
+  
+  /* Syntax Highlighting Overlay - hidden for now for better editing UX */
+  .formula-highlight-overlay {
+    display: none; /* Hide overlay - just use plain input for now */
+    position: absolute;
+    inset: 0;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-x: auto;
+    pointer-events: none;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+  }
+  
+  .formula-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  
+  .formula-text {
+    color: var(--text-primary);
+  }
+  
+  /* Field name before = sign */
+  .formula-fieldname {
+    color: var(--accent-secondary, #f59e0b);
+    font-weight: 600;
+  }
+  
+  /* Field Reference Styling */
+  .formula-field-ref {
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  
+  .formula-field-ref.dimension {
+    background: rgba(59, 130, 246, 0.25);
+    color: #60a5fa;
+  }
+  
+  .formula-field-ref.measure {
+    background: rgba(34, 197, 94, 0.25);
+    color: #4ade80;
+  }
+  
+  .formula-field-ref.invalid {
+    background: rgba(239, 68, 68, 0.25);
+    color: #f87171;
+    text-decoration: wavy underline;
+    text-decoration-color: #ef4444;
+  }
+  
+  /* Actual Input */
+  .formula-input {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 36px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.4;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    caret-color: var(--accent-primary);
+    outline: none;
+  }
+  
+  .formula-input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
+  }
+  
+  /* Text selection styling */
+  .formula-input::selection {
+    background: rgba(59, 130, 246, 0.3);
+    color: inherit;
+  }
+  
+  .formula-input::-moz-selection {
+    background: rgba(59, 130, 246, 0.3);
+    color: inherit;
+  }
+  
+  .formula-input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+  }
+  
+  .formula-input:focus ~ .formula-highlight-overlay,
+  .formula-input:focus + .formula-highlight-overlay {
+    border-color: var(--accent-primary);
+  }
+  
+  /* Action buttons */
+  .formula-bar-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  
+  .formula-cancel-btn,
+  .formula-save-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  
+  .formula-cancel-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+  }
+  
+  .formula-cancel-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #f87171;
+    transform: scale(1.08);
+  }
+  
+  .formula-save-btn {
+    background: rgba(var(--accent-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    color: var(--accent-primary);
+  }
+  
+  .formula-save-btn:hover {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+  }
+  
+  .formula-cancel-btn svg,
+  .formula-save-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  /* Error Message */
+  .formula-error-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(239, 68, 68, 0.08);
+    border-top: 1px solid rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    font-size: 12px;
+    animation: errorShake 0.4s ease-out;
+  }
+  
+  .formula-error-inline.name-error {
+    background: rgba(239, 68, 68, 0.12);
+  }
+  
+  @keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+  }
+  
+  .formula-error-inline svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+  
+  /* Name error state - highlights the name portion */
+  .formula-input.name-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+    animation: inputErrorPulse 0.5s ease-out;
+  }
+  
+  @keyframes inputErrorPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.2);
+    }
+    100% {
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+    }
+  }
+  
+  .formula-input-wrapper.has-name-error::before {
+    content: 'Change name →';
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    transform: translateY(-50%);
+    margin-right: 8px;
+    padding: 4px 8px;
+    background: #ef4444;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    white-space: nowrap;
+    animation: hintPop 0.3s ease-out;
+    z-index: 10;
+  }
+  
+  @keyframes hintPop {
+    0% {
+      opacity: 0;
+      transform: translateY(-50%) translateX(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(-50%) translateX(0);
+    }
+  }
+  
+  /* Autocomplete Dropdown - rendered via portal */
+  .formula-autocomplete {
+    max-height: 300px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    animation: autocompleteSlideIn 0.15s ease-out;
+  }
+  
+  @keyframes autocompleteSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .autocomplete-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  
+  .autocomplete-header svg {
+    width: 12px;
+    height: 12px;
+  }
+  
+  .autocomplete-list {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  
+  .autocomplete-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+  
+  .autocomplete-item:hover,
+  .autocomplete-item.selected {
+    background: var(--bg-hover);
+  }
+  
+  .autocomplete-item.selected {
+    background: rgba(var(--accent-rgb), 0.15);
+  }
+  
+  .autocomplete-item .field-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  
+  .autocomplete-item .field-icon.dimension {
+    color: #60a5fa;
+  }
+  
+  .autocomplete-item .field-icon.measure {
+    color: #4ade80;
+  }
+  
+  .autocomplete-item .field-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  }
+  
+  .autocomplete-item .field-type {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+  }
+  
+  /* Function autocomplete styling */
+  .autocomplete-item.function {
+    align-items: flex-start;
+  }
+  
+  .autocomplete-item .function-icon {
+    width: 16px;
+    height: 16px;
+    color: #f59e0b;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  
+  .autocomplete-item .function-icon.ai {
+    color: #a855f7;
+  }
+  
+  .autocomplete-item .function-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  
+  .autocomplete-item .function-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  
+  .autocomplete-item .function-syntax {
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    color: var(--text-muted);
+  }
+  
+  .autocomplete-item .function-category {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    align-self: flex-start;
+  }
+  
+  /* AI category special styling */
+  .autocomplete-item .function-category.ai-category {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(59, 130, 246, 0.2));
+    color: #a855f7;
+  }
+  
+  .autocomplete-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-subtle);
+  }
+  
+  .autocomplete-hint kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    padding: 2px 4px;
+    font-size: 10px;
+    font-family: inherit;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    margin-right: 3px;
+  }
+  
+  /* Scrollbar for autocomplete */
+  .autocomplete-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .autocomplete-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .autocomplete-list::-webkit-scrollbar-thumb {
+    background: var(--border-subtle);
+    border-radius: 3px;
+  }
+  
+  .autocomplete-list::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+  
