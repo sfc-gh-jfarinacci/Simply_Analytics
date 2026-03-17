@@ -3,7 +3,8 @@
  */
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { FiX, FiHash, FiTrendingUp, FiCpu, FiColumns, FiList, FiTarget } from 'react-icons/fi';
+import { FiX, FiTrendingUp, FiCpu, FiColumns, FiList, FiTarget } from 'react-icons/fi';
+import { getDataTypeIcon } from '../utils';
 
 const ShelfPopup = ({
   shelfPopup,
@@ -168,6 +169,7 @@ const ColumnsFieldList = ({
       {allDimensions.filter(filterBySearch).map(dim => {
         const isInPending = pendingColumns.some(c => (c.name || c) === dim.name);
         const isInRows = rows.some(r => (r.name || r) === dim.name);
+        const DimIcon = getDataTypeIcon(dim.type || dim.dataType || dim.data_type);
         return (
           <label key={dim.name} className={`shelf-popup-item ${isInRows ? 'used-elsewhere' : ''}`}>
             <input
@@ -182,7 +184,7 @@ const ColumnsFieldList = ({
                 }
               }}
             />
-            <FiHash className="item-icon dimension" />
+            <DimIcon className="item-icon dimension" />
             <span className="item-name">{dim.name}</span>
             {isInRows && <span className="item-used">in rows</span>}
           </label>
@@ -286,6 +288,7 @@ const RowsFieldList = ({
       {allDimensions.filter(filterBySearch).map(dim => {
         const isInPending = pendingRows.some(r => (r.name || r) === dim.name);
         const isInColumns = columns.some(c => (c.name || c) === dim.name);
+        const DimIcon = getDataTypeIcon(dim.type || dim.dataType || dim.data_type);
         return (
           <label key={dim.name} className={`shelf-popup-item ${isInColumns ? 'used-elsewhere' : ''}`}>
             <input
@@ -300,7 +303,7 @@ const RowsFieldList = ({
                 }
               }}
             />
-            <FiHash className="item-icon dimension" />
+            <DimIcon className="item-icon dimension" />
             <span className="item-name">{dim.name}</span>
             {isInColumns && <span className="item-used">in columns</span>}
           </label>
@@ -359,6 +362,7 @@ const MarksFieldList = ({
       )}
       {allDimensions.filter(filterBySearch).map(dim => {
         const alreadyAdded = isInMarks(dim.name);
+        const DimIcon = getDataTypeIcon(dim.type || dim.dataType || dim.data_type);
         return (
           <button 
             key={dim.name} 
@@ -366,7 +370,7 @@ const MarksFieldList = ({
             onClick={() => !alreadyAdded && onAddField(dim.name)}
             disabled={alreadyAdded}
           >
-            <FiHash className="item-icon dimension" />
+            <DimIcon className="item-icon dimension" />
             <span className="item-name">{dim.name}</span>
             {alreadyAdded && <span className="item-used">added</span>}
           </button>

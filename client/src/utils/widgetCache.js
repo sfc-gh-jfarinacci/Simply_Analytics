@@ -2,14 +2,15 @@
 const queryCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-export const getCacheKey = (semanticView, dimensions, measures, filters = [], sorts = [], customColumns = []) => {
+export const getCacheKey = (semanticView, dimensions, measures, filters = [], sorts = [], customColumns = [], aggregatedFields = []) => {
   return JSON.stringify({ 
     semanticView, 
     dimensions: dimensions.sort(), 
     measures: measures.sort(),
     filters: filters.map(f => ({ field: f.field, values: (f.values || []).sort() })),
     sorts: sorts.map(s => ({ field: s.field, direction: s.direction })),
-    customColumns: customColumns.map(c => ({ name: c.name, expression: c.expression }))
+    customColumns: customColumns.map(c => ({ name: c.name, expression: c.expression })),
+    aggregatedFields: aggregatedFields.map(a => ({ name: a.name, aggregation: a.aggregation })).sort((a, b) => a.name.localeCompare(b.name))
   });
 };
 

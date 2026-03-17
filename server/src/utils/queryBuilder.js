@@ -512,6 +512,7 @@ const buildQueryDirect = ({
   semanticViewFQN,
   dimensions = [],
   measures: inputMeasures = [],
+  aggregatedDimensions = [],
   filters = [],
   orderBy = [],
   customColumns = [],
@@ -521,21 +522,27 @@ const buildQueryDirect = ({
 
   // Normalize measures to always be objects with { name, aggregation }
   // Supports both string format (backwards compatible) and object format
+  // aggregation can be null/"NONE" meaning no wrapping (bare metric)
   const measures = inputMeasures.map(m => {
     if (typeof m === 'string') {
-      return { name: m, aggregation: 'SUM' }; // Default to SUM for string measures
+      return { name: m, aggregation: 'SUM' };
     }
-    return { name: m.name, aggregation: m.aggregation || 'SUM' };
+    const agg = m.aggregation;
+    const normalized = (agg && agg !== 'NONE') ? agg : null;
+    return { name: m.name, aggregation: normalized };
   });
 
   console.log('[buildQueryDirect] INPUT:', JSON.stringify({
-    dimensions, measures: inputMeasures,
+    dimensions, measures: inputMeasures, aggregatedDimensions,
     customColumns: customColumns.map(cc => ({ name: cc.name, expr: cc.expression?.substring(0, 80) })),
   }));
 
   if (dimensions.length === 0 && measures.length === 0 && customColumns.length === 0) {
     return '-- Add fields to query';
   }
+
+  // Build lookup for dimensions that have user-applied aggregation
+  const aggDimMap = new Map(aggregatedDimensions.map(ad => [ad.name.toUpperCase(), ad.aggregation]));
 
   // Set of calculated field names — these are NOT semantic view fields
   const calcFieldNames = new Set(customColumns.filter(cc => cc && cc.name).map(cc => cc.name.toUpperCase()));
@@ -613,13 +620,20 @@ const buildQueryDirect = ({
     cc && cc.expression && !isAggregateExpression(cc.expression)
   );
   
+  // Check if any measure has an explicit aggregation function to apply
+  const measuresWithAgg = measures.filter(m => m.aggregation);
+  
   // We need GROUP BY/aggregation when:
+  // - Dimensions and measures with aggregation coexist (standard aggregation case)
   // - Date parts are used (they create GROUP BY)
   // - Aggregate calc fields exist with dimensions
   // - Non-aggregate calc fields exist alongside measures (measures need wrapping)
-  const needsAggregation = allDatePartDimensions.length > 0 || 
+  // - Any dimension has user-applied aggregation (e.g. SUM of a dimension)
+  const needsAggregation = (allBaseDimensions.length > 0 && measuresWithAgg.length > 0) ||
+                           allDatePartDimensions.length > 0 || 
                            (hasAggregateCalcField && (regularDimensions.length > 0 || orderByRegular.length > 0)) ||
-                           (hasNonAggCalcField && measures.length > 0);
+                           (hasNonAggCalcField && measuresWithAgg.length > 0) ||
+                           aggDimMap.size > 0;
   
   // Build SELECT clause
   const selectParts = [];
@@ -641,8 +655,13 @@ const buildQueryDirect = ({
         }
       }
     } else {
-      selectParts.push(`"${dim}"`);
-      groupByParts.push(`"${dim}"`);
+      const dimAgg = aggDimMap.get(dim.toUpperCase());
+      if (needsAggregation && dimAgg) {
+        selectParts.push(`${dimAgg}("${dim}") AS "${dim}"`);
+      } else {
+        selectParts.push(`"${dim}"`);
+        groupByParts.push(`"${dim}"`);
+      }
       addedToSelect.add(dim);
     }
   });
@@ -672,9 +691,9 @@ const buildQueryDirect = ({
     }
   });
   
-  // Add measures - wrap in aggregation function if we need aggregation
+  // Add measures - wrap in aggregation function only if the measure has one and we need aggregation
   measures.forEach(({ name, aggregation }) => {
-    if (needsAggregation) {
+    if (needsAggregation && aggregation) {
       selectParts.push(`${aggregation}("${name}") AS "${name}"`);
     } else {
       selectParts.push(`"${name}"`);

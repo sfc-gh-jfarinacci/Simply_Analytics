@@ -394,6 +394,7 @@ semanticRoutes.post('/preview', async (req, res, next) => {
     // Process unified config - fields now include semanticType from frontend
     const dimensions = [];
     const measures = [];
+    const previewAggDims = [];
     
     // Helper to check if field is a measure in metadata (fallback)
     const isMetadataMeasure = (fieldName) => {
@@ -432,14 +433,23 @@ semanticRoutes.post('/preview', async (req, res, next) => {
       if (isMeasure) {
         if (!measureSet.has(name)) {
           measureSet.add(name);
-          // Store as object with aggregation for proper SQL generation
+          const agg = field.aggregation ? field.aggregation.toUpperCase() : null;
           measures.push({ 
             name, 
-            aggregation: (field.aggregation || 'SUM').toUpperCase() 
+            aggregation: (agg && agg !== 'NONE') ? agg : null
           });
         }
       } else {
-        if (!dimensions.includes(name)) dimensions.push(name);
+        if (!dimensions.includes(name)) {
+          dimensions.push(name);
+        }
+        // Track aggregated dimensions (dimension with user-applied aggregation)
+        const dimAgg = field.aggregation ? field.aggregation.toUpperCase() : null;
+        if (dimAgg && dimAgg !== 'NONE') {
+          if (!previewAggDims.some(ad => ad.name === name)) {
+            previewAggDims.push({ name, aggregation: dimAgg });
+          }
+        }
       }
     });
 
@@ -494,6 +504,7 @@ semanticRoutes.post('/preview', async (req, res, next) => {
       semanticViewFQN: semanticView,
       dimensions,
       measures,
+      aggregatedDimensions: previewAggDims,
       filters,
       orderBy,
       customColumns,
@@ -551,14 +562,15 @@ semanticRoutes.post('/query', async (req, res, next) => {
       semanticView, 
       dimensions = [], 
       measures = [], 
+      aggregatedFields = [],
       filters = [], 
       orderBy = [], 
-      customColumns = [],  // Calculated field definitions: [{ name, expression }]
+      customColumns = [],
       limit = 1000000,
       connectionId,
-      role,      // Dashboard-specific role override
-      warehouse,  // Dashboard-specific warehouse override
-      forceRefresh = false  // Force a fresh Snowflake connection (after VPN change etc)
+      role,
+      warehouse,
+      forceRefresh = false
     } = req.body;
 
     let connection = req.snowflakeConnection;
@@ -594,6 +606,7 @@ semanticRoutes.post('/query', async (req, res, next) => {
     debugLog('semanticView:', semanticView);
     debugLog('dimensions:', JSON.stringify(dimensions));
     debugLog('measures:', JSON.stringify(measures));
+    debugLog('aggregatedFields:', JSON.stringify(aggregatedFields));
     debugLog('filters:', JSON.stringify(filters, null, 2));
     debugLog('orderBy:', JSON.stringify(orderBy));
     debugLog('customColumns:', JSON.stringify(customColumns));
@@ -608,11 +621,38 @@ semanticRoutes.post('/query', async (req, res, next) => {
       return res.status(400).json({ error: 'At least one dimension, measure, or custom column is required' });
     }
 
+    // Merge aggregatedFields into measures as objects with { name, aggregation }
+    const aggMap = new Map(aggregatedFields.map(af => [af.name.toUpperCase(), af.aggregation || null]));
+
+    // Separate aggregated dimensions from measure aggregations
+    const dimensionSet = new Set(dimensions.map(d => d.toUpperCase()));
+    const aggregatedDimensions = [];
+    aggMap.forEach((agg, upperName) => {
+      if (agg && dimensionSet.has(upperName)) {
+        aggregatedDimensions.push({ name: dimensions.find(d => d.toUpperCase() === upperName) || upperName, aggregation: agg });
+      }
+    });
+
+    const enrichedMeasures = measures.map(m => {
+      const name = typeof m === 'object' ? m.name : m;
+      const upperName = name.toUpperCase();
+      let agg;
+      if (aggMap.has(upperName)) {
+        agg = aggMap.get(upperName);
+      } else if (typeof m === 'object' && m.aggregation) {
+        agg = m.aggregation;
+      } else {
+        agg = 'SUM';
+      }
+      return { name, aggregation: (agg && agg !== 'NONE') ? agg : null };
+    });
+
     // Use the shared query builder - SINGLE SOURCE OF TRUTH
     const sql = buildQueryDirect({
       semanticViewFQN: semanticView,
       dimensions,
-      measures,
+      measures: enrichedMeasures,
+      aggregatedDimensions,
       filters,
       orderBy,
       customColumns,
@@ -1799,14 +1839,15 @@ semanticRoutes.post('/query-with-custom-columns', async (req, res) => {
       semanticView, 
       dimensions = [], 
       measures = [], 
+      aggregatedFields = [],
       filters = [], 
       orderBy = [], 
       limit = 1000000,
-      customColumns = [],  // Array of { name, expression, type }
+      customColumns = [],
       connectionId,
-      role,      // Dashboard-specific role override
-      warehouse,  // Dashboard-specific warehouse override
-      forceRefresh = false  // Force a fresh Snowflake connection (after VPN change etc)
+      role,
+      warehouse,
+      forceRefresh = false
     } = req.body;
 
     let connection = req.snowflakeConnection;
@@ -1867,11 +1908,22 @@ semanticRoutes.post('/query-with-custom-columns', async (req, res) => {
       });
     });
 
+    // Separate aggregated dimensions from measure aggregations
+    const cwcAggMap = new Map(aggregatedFields.map(af => [af.name.toUpperCase(), af.aggregation || null]));
+    const cwcDimensionSet = new Set(dimensions.map(d => d.toUpperCase()));
+    const cwcAggDims = [];
+    cwcAggMap.forEach((agg, upperName) => {
+      if (agg && cwcDimensionSet.has(upperName)) {
+        cwcAggDims.push({ name: dimensions.find(d => d.toUpperCase() === upperName) || upperName, aggregation: agg });
+      }
+    });
+
     // Use the shared query builder - SINGLE SOURCE OF TRUTH
     const sql = buildQueryDirect({
       semanticViewFQN: semanticView,
       dimensions,
       measures: enrichedMeasures,
+      aggregatedDimensions: cwcAggDims,
       filters,
       orderBy,
       customColumns,

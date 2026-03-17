@@ -121,3 +121,26 @@
 {"level":"INFO","message":"[6:19:17.894 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
 {"level":"INFO","message":"[6:54:27.277 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
 {"level":"INFO","message":"[10:55:22.167 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"ERROR","message":"[8:27:18.720 PM]: Error issuing heartbeat call: Incoming request with IP/Token 173.172.159.211 is not allowed to access Snowflake. Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access."}
+{"level":"ERROR","message":"[9:06:05.174 PM]: Error issuing heartbeat call: Incoming request with IP/Token 173.172.159.211 is not allowed to access Snowflake. Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access."}
+{"level":"INFO","message":"[9:44:33.902 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[9:45:06.671 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"ERROR","message":"[10:03:47.897 PM]: Error issuing heartbeat call: Incoming request with IP/Token 173.172.159.211 is not allowed to access Snowflake. Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access."}
+{"level":"INFO","message":"[8:32:25.031 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[6:23:24.746 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[6:23:33.652 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[6:23:44.448 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[6:24:46.680 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:21:05.977 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:21:16.007 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:21:24.566 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:21:42.021 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:21:56.964 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:22:18.095 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:23:11.179 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:23:22.533 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:23:31.521 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:26:17.874 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:26:32.361 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[8:29:51.277 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"ERROR","message":"[6:36:58.749 PM]: Error issuing heartbeat call: Incoming request with IP/Token 173.172.159.211 is not allowed to access Snowflake. Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access."}

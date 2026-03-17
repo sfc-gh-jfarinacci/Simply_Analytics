@@ -223,17 +223,16 @@ export const useWidgetConfig = ({
       const aggregation = getAggregation(name);
       const markType = markTypeOverride || getMarkType(name);
       
-      // Determine semantic type
-      // If user applied aggregation, treat as measure
-      // Otherwise use semantic view definition
+      // Determine semantic type from semantic view definition
+      // Do NOT promote dimensions to measures just because user applied aggregation —
+      // the field's semantic type reflects its definition in the semantic view.
+      // Aggregated dimensions are still sent as DIMENSIONS to Snowflake;
+      // the query builder wraps them with AGG() in the SELECT clause.
       let semanticType = getSemanticType(name);
-      if (aggregation && semanticType !== 'measure') {
-        semanticType = 'measure'; // User aggregation promotes to measure
-      }
       
       // For custom columns, semantic type depends on expression
       if (isCustomColumn(name)) {
-        semanticType = 'measure'; // Custom columns with aggregation are measures
+        semanticType = 'measure';
       }
       
       // Get alias from columnAliases

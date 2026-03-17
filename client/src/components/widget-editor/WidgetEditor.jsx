@@ -89,13 +89,24 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     return shelfFields.length > 0 ? shelfFields.map(f => stripEntityPrefix(f.name)) : null;
   };
 
+  // Stabilization refs — declared early so wrapped setters can reference them.
+  // During the first ~800ms after mount, metadata loading causes syncKey churn.
+  // Any *user-initiated* state change (remove field, change aggregation, etc.)
+  // ends the stabilization window immediately so the sync fires.
+  const mountTimeRef = useRef(Date.now());
+  const isStabilizingRef = useRef(true);
+
   // Initialize columns - priority: unified fields > fieldsUsed > queryDimensions > legacy
-  const [columns, setColumns] = useState(() => {
+  const [columns, _setColumnsRaw] = useState(() => {
     // Priority 1: UNIFIED fields array with shelf='columns'
-    const fromUnified = getFieldsFromUnified(widget?.fields, 'columns');
-    if (fromUnified) {
-      console.log('[WidgetEditor] Columns from unified fields:', fromUnified);
-      return fromUnified;
+    // When the unified fields array exists, it is the SINGLE SOURCE OF TRUTH.
+    // Do NOT fall through to queryDimensions/queryMeasures which classify by
+    // semantic type rather than shelf placement, causing fields to appear in
+    // both shelves after reload.
+    if (widget?.fields && Array.isArray(widget.fields) && widget.fields.length > 0) {
+      const fromUnified = getFieldsFromUnified(widget.fields, 'columns');
+      console.log('[WidgetEditor] Columns from unified fields:', fromUnified || []);
+      return fromUnified || [];
     }
     
     // Priority 2: fieldsUsed with placement='column'
@@ -105,7 +116,7 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
       return fromFieldsUsed;
     }
     
-    // Priority 3: queryDimensions (newer format - dimensions go to columns)
+    // Priority 3: queryDimensions (legacy - only used when no unified fields)
     if (widget?.queryDimensions && widget.queryDimensions.length > 0) {
       console.log('[WidgetEditor] Columns from queryDimensions:', widget.queryDimensions);
       return [...widget.queryDimensions];
@@ -122,12 +133,16 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
   });
   
   // Initialize rows - priority: unified fields > fieldsUsed > queryMeasures > legacy
-  const [rows, setRows] = useState(() => {
+  const [rows, _setRowsRaw] = useState(() => {
     // Priority 1: UNIFIED fields array with shelf='rows'
-    const fromUnified = getFieldsFromUnified(widget?.fields, 'rows');
-    if (fromUnified) {
-      console.log('[WidgetEditor] Rows from unified fields:', fromUnified);
-      return fromUnified;
+    // When the unified fields array exists, it is the SINGLE SOURCE OF TRUTH.
+    // Do NOT fall through to queryMeasures/queryDimensions which classify by
+    // semantic type rather than shelf placement, causing fields to appear in
+    // both shelves after reload.
+    if (widget?.fields && Array.isArray(widget.fields) && widget.fields.length > 0) {
+      const fromUnified = getFieldsFromUnified(widget.fields, 'rows');
+      console.log('[WidgetEditor] Rows from unified fields:', fromUnified || []);
+      return fromUnified || [];
     }
     
     // Priority 2: fieldsUsed with placement='row'
@@ -137,7 +152,7 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
       return fromFieldsUsed;
     }
     
-    // Priority 3: queryMeasures (newer format - measures go to rows for charts)
+    // Priority 3: queryMeasures (legacy - only used when no unified fields)
     if (widget?.queryMeasures && widget.queryMeasures.length > 0) {
       console.log('[WidgetEditor] Rows from queryMeasures:', widget.queryMeasures);
       return [...widget.queryMeasures];
@@ -160,6 +175,15 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     // We keep values empty to avoid duplication.
     return [];
   });
+
+  const setColumns = useCallback((updater) => {
+    isStabilizingRef.current = false;
+    _setColumnsRaw(updater);
+  }, []);
+  const setRows = useCallback((updater) => {
+    isStabilizingRef.current = false;
+    _setRowsRaw(updater);
+  }, []);
   
   const [colorPreset, setColorPreset] = useState(widget?.config?.colorPresetIndex ?? 0);
   const [customScheme, setCustomScheme] = useState(widget?.config?.customScheme || null);
@@ -661,7 +685,7 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
   });
   
   // Field aggregations state - maps fieldName -> aggregation type (sum, avg, min, max, etc.)
-  const [fieldAggregations, setFieldAggregations] = useState(() => {
+  const [fieldAggregations, _setFieldAggregationsRaw] = useState(() => {
     const aggs = {};
     
     // Priority 1: UNIFIED fields array
@@ -688,7 +712,12 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     
     return aggs;
   });
-  
+
+  const setFieldAggregations = useCallback((updater) => {
+    isStabilizingRef.current = false;
+    _setFieldAggregationsRaw(updater);
+  }, []);
+
   // Field mark types state - maps fieldName -> markType for pills
   const [fieldMarkTypes, setFieldMarkTypes] = useState(() => {
     const markTypes = {};
@@ -870,16 +899,11 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
   // Track last synced state to avoid infinite loops
   const lastSyncedRef = useRef(null);
   const syncTimeoutRef = useRef(null);
-  // Stabilization window: when the editor opens, metadata loading and field
-  // reclassification cause several rapid re-computations.  We absorb ALL of
-  // them by treating everything within the first ~800ms as "initial" — the
-  // baseline key is updated silently without marking unsaved.
-  const mountTimeRef = useRef(Date.now());
-  const isStabilizingRef = useRef(true);
+  const pendingSyncRef = useRef(null);
   
   // Memoize the fields array to prevent unnecessary effect triggers
   const fieldsKey = useMemo(() => {
-    return JSON.stringify(widgetConfig?.fields?.map(f => ({ name: f.name, shelf: f.shelf, markType: f.markType })) || []);
+    return JSON.stringify(widgetConfig?.fields?.map(f => ({ name: f.name, shelf: f.shelf, markType: f.markType, aggregation: f.aggregation })) || []);
   }, [widgetConfig?.fields]);
   
   // Memoize marks to prevent unnecessary effect triggers
@@ -932,10 +956,10 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     }
     
     // Debounce the sync to prevent rapid updates
-    syncTimeoutRef.current = setTimeout(() => {
-      // Double-check the key hasn't changed during debounce
+    const doSync = () => {
       if (lastSyncedRef.current === syncKey) return;
       lastSyncedRef.current = syncKey;
+      pendingSyncRef.current = null;
       
       // Build the unified widget definition
       const updatedWidget = {
@@ -967,17 +991,24 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
           ...getColorConfig(),
           refreshEnabled,
           columnAliases,
+          fieldAggregations,
         },
       };
       
       // Write to global config
       updateWidget(currentDashboard.id, widget.id, updatedWidget);
-    }, 300); // 300ms debounce - longer to allow chart type transitions to settle
+    };
+
+    pendingSyncRef.current = doSync;
+    syncTimeoutRef.current = setTimeout(doSync, 300); // 300ms debounce
     
-    // Cleanup on unmount
+    // Cleanup: flush pending sync instead of dropping it
     return () => {
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
+      }
+      if (pendingSyncRef.current) {
+        pendingSyncRef.current();
       }
     };
     // Only include stable/primitive dependencies to avoid infinite loops
@@ -1527,12 +1558,10 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
       return fields.map((field, i) => {
         if (i !== idx) return field;
         
-        // Normalize to object format
         const fieldObj = typeof field === 'string' 
           ? { name: field, fieldType: 'dimension' }
           : { ...field };
         
-        // Update aggregation (null removes it)
         if (aggregation) {
           fieldObj.aggregation = aggregation;
         } else {
@@ -1546,6 +1575,17 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     if (shelf === 'columns') setColumns(updateField);
     if (shelf === 'rows') setRows(updateField);
     if (shelf === 'values') setValues(updateField);
+    
+    // Also update fieldAggregations so useWidgetConfig picks up the change
+    const targetFields = shelf === 'columns' ? columns : shelf === 'rows' ? rows : values;
+    const targetField = targetFields[idx];
+    const fieldName = typeof targetField === 'object' && targetField !== null ? targetField.name : targetField;
+    if (fieldName) {
+      setFieldAggregations(prev => ({
+        ...prev,
+        [fieldName]: aggregation || null,
+      }));
+    }
     
     setAggDropdown({ open: false, shelf: null, idx: null, x: 0, y: 0 });
   };

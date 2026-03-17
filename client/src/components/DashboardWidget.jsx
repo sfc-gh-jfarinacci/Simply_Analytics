@@ -171,7 +171,7 @@ const DashboardWidget = ({
   // Extract dimensions, measures, and aggregations for the semantic query
   // Uses unified widget.fields array as THE source of truth
   // Falls back to legacy formats for backwards compatibility
-  const { dimensions, measures, aggregatedFields, columnDimensions, rowDimensions, colorField, clusterField, detailFields, tooltipFields, labelFields, liveWidgetType, liveSemanticViewId, queryConfig } = useMemo(() => {
+  const { dimensions, measures, chartMeasures, aggregatedFields, columnDimensions, rowDimensions, colorField, clusterField, detailFields, tooltipFields, labelFields, liveWidgetType, liveSemanticViewId, queryConfig } = useMemo(() => {
     // Widget config comes directly from global config (currentDashboard.tabs[].widgets[])
     // When WidgetEditor makes changes, it updates the global config via updateWidget
     // This widget prop receives the updated data automatically
@@ -222,6 +222,19 @@ const DashboardWidget = ({
       const aggFields = widget.fields
         .filter(f => f.aggregation)
         .map(f => ({ name: stripPrefix(f.name), aggregation: f.aggregation }));
+      // Aggregated dimension fields on the rows shelf act as chart y-axis values
+      // (e.g., COUNT of a dimension). They stay in `dims` for the query but are
+      // included in chartMeas so charts know to plot them and the config check passes.
+      const aggDimOnRows = new Set(
+        widget.fields
+          .filter(f =>
+            (f.semanticType === 'dimension' || f.semanticType === 'fact') &&
+            f.shelf === 'rows' &&
+            f.aggregation
+          )
+          .map(f => stripPrefix(f.name))
+      );
+      const chartMeas = [...meas, ...aggDimOnRows];
       const colDims = widget.fields
         .filter(f => f.shelf === 'columns')
         .map(f => stripPrefix(f.name));
@@ -246,13 +259,15 @@ const DashboardWidget = ({
         const legacy = Array.isArray(marks.tooltip) ? marks.tooltip : [marks.tooltip];
         legacy.forEach(t => { if (t && !tooltipFields.includes(stripPrefix(t))) tooltipFields.push(stripPrefix(t)); });
       }
-      // Label fields = explicitly marked 'label' OR dimension fields with no
-      // visual mark type sitting on the rows shelf (informational only).
+      // Label fields = explicitly marked 'label' OR non-aggregated dimension fields
+      // on the rows shelf with no visual mark type (informational only).
+      // Aggregated dimensions on the rows shelf are chart values, not labels.
       const labelFields = widget.fields
         .filter(f =>
           (f.markType === 'label') ||
           ((f.semanticType === 'dimension' || f.semanticType === 'fact') &&
            f.shelf === 'rows' &&
+           !f.aggregation &&
            (!f.markType || !visualMarkTypes.has(f.markType)))
         )
         .map(f => stripPrefix(f.name));
@@ -260,6 +275,7 @@ const DashboardWidget = ({
       return { 
         dimensions: dims, 
         measures: meas,
+        chartMeasures: chartMeas,
         aggregatedFields: aggFields,
         columnDimensions: colDims.filter(f => !meas.includes(f)),
         rowDimensions: rowDims.filter(f => !meas.includes(f)),
@@ -406,6 +422,7 @@ const DashboardWidget = ({
     return { 
       dimensions: dims, 
       measures: meas,
+      chartMeasures: meas,
       aggregatedFields: aggFields,
       columnDimensions: filteredColDims,
       rowDimensions: filteredRowDims,
@@ -768,6 +785,8 @@ const DashboardWidget = ({
     // Only trigger reload when USED calculated fields change
     return JSON.stringify(usedCustomColumns.map(c => ({ name: c.name, expression: c.expression })));
   }, [usedCustomColumns]);
+
+  const aggregationsKey = useMemo(() => JSON.stringify(aggregatedFields), [aggregatedFields]);
   
   // Track if this is a refresh trigger (vs initial load)
   const prevRefreshKeyRef = useRef(0);
@@ -820,7 +839,7 @@ const DashboardWidget = ({
       setHasAttemptedLoad(true);
     }
     // Include dashboardConnectionError so effect re-runs when error is set/cleared
-  }, [semanticViewFQN, dimensionsKey, measuresKey, filtersKey, sortsKey, customColumnsKey, widgetRefreshKey, widget?.config?.refreshEnabled, dashboardConnectionError]);
+  }, [semanticViewFQN, dimensionsKey, measuresKey, aggregationsKey, filtersKey, sortsKey, customColumnsKey, widgetRefreshKey, widget?.config?.refreshEnabled, dashboardConnectionError]);
   
   // Report network policy errors to dashboard level (for reconnect banner)
   // Only report if dashboard doesn't already have an error set (prevent repeated updates)
@@ -874,7 +893,7 @@ const DashboardWidget = ({
       return; // Don't update loading state - another load is in progress
     }
 
-    const cacheKey = getCacheKey(semanticViewFQN, dimensions, measures, filtersApplied, sortsApplied, usedCustomColumns);
+    const cacheKey = getCacheKey(semanticViewFQN, dimensions, measures, filtersApplied, sortsApplied, usedCustomColumns, aggregatedFields);
     
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
@@ -937,6 +956,7 @@ const DashboardWidget = ({
           semanticView: semanticViewFQN,
           dimensions,
           measures,
+          aggregatedFields: aggregatedFields || [],
           filters: filtersApplied,
           orderBy: sortsApplied,
           limit: 1000000,
@@ -1161,7 +1181,9 @@ const DashboardWidget = ({
 
     // Check if widget is configured - use new fieldsUsed structure
     const hasSemanticView = semanticViewFQN || widget.semanticViewsReferenced?.length > 0;
-    const hasMeasures = measures.length > 0 || widget.query?.measures?.length > 0;
+    // chartMeasures includes both semantic measures AND aggregated dimensions
+    // on the rows shelf (e.g., COUNT of a dimension acts as a y-axis value)
+    const hasMeasures = chartMeasures.length > 0 || widget.query?.measures?.length > 0;
     const hasDimensions = dimensions.length > 0 || widget.query?.dimensions?.length > 0;
     
     // Tables can work with just dimensions (no measures required)
@@ -1251,7 +1273,7 @@ const DashboardWidget = ({
       xAxis: columnDimensions,
       rows: rowDimensions,
       series: colorField ? [colorField] : rowDimensions,
-      measures: measures,
+      measures: chartMeasures,
       marks: widget.marks || {},
       colorField: colorField,
       clusterField: clusterField,
@@ -1535,7 +1557,7 @@ const DashboardWidget = ({
                     xAxis: columnDimensions,
                     rows: rowDimensions,
                     series: colorField ? [colorField] : rowDimensions,
-                    measures: measures,
+                    measures: chartMeasures,
                     marks: widget.marks || {},
                     colorField: colorField,
                     clusterField: clusterField,
