@@ -96,6 +96,14 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
   const mountTimeRef = useRef(Date.now());
   const isStabilizingRef = useRef(true);
 
+  // Tracks whether the last widget.fields change was initiated by this editor.
+  // When the AI assistant updates the widget externally, we need to re-sync
+  // local state; but we skip re-syncs triggered by the editor's own auto-save.
+  const lastExternalFieldsRef = useRef(
+    widget?.fields ? JSON.stringify(widget.fields) : ''
+  );
+  const internalUpdateRef = useRef(false);
+
   // Initialize columns - priority: unified fields > fieldsUsed > queryDimensions > legacy
   const [columns, _setColumnsRaw] = useState(() => {
     // Priority 1: UNIFIED fields array with shelf='columns'
@@ -385,7 +393,8 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     const search = fieldSearch.toLowerCase();
     return allDimensions.filter(d => 
       d.name.toLowerCase().includes(search) ||
-      (d.parentEntity && d.parentEntity.toLowerCase().includes(search))
+      (d.parentEntity && d.parentEntity.toLowerCase().includes(search)) ||
+      (d.displayName && d.displayName.toLowerCase().includes(search))
     );
   }, [allDimensions, fieldSearch]);
   
@@ -394,7 +403,8 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     const search = fieldSearch.toLowerCase();
     return (viewMetadata?.measures || []).filter(m => 
       m.name.toLowerCase().includes(search) ||
-      (m.parentEntity && m.parentEntity.toLowerCase().includes(search))
+      (m.parentEntity && m.parentEntity.toLowerCase().includes(search)) ||
+      (m.displayName && m.displayName.toLowerCase().includes(search))
     );
   }, [viewMetadata?.measures, fieldSearch]);
   
@@ -579,6 +589,7 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
     const delay = (filtersChanged || sortsChanged) ? 0 : 1000;
     
     autoSaveTimerRef.current = setTimeout(() => {
+      internalUpdateRef.current = true;
       onAutoSave(buildAutoSaveUpdates());
     }, delay);
     
@@ -752,6 +763,69 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
   const [fieldConfigs, setFieldConfigs] = useState(() => {
     return widget?.config?.fieldConfigs || {};
   });
+
+  // Re-sync local editor state when the widget prop is updated externally
+  // (e.g. by the AI assistant). Skip re-syncs caused by the editor's own
+  // auto-save round-trips.
+  useEffect(() => {
+    const currentFieldsJson = widget?.fields ? JSON.stringify(widget.fields) : '';
+    if (currentFieldsJson === lastExternalFieldsRef.current) return;
+
+    // If this change originated from our own auto-save, skip re-sync
+    if (internalUpdateRef.current) {
+      internalUpdateRef.current = false;
+      lastExternalFieldsRef.current = currentFieldsJson;
+      return;
+    }
+
+    lastExternalFieldsRef.current = currentFieldsJson;
+
+    if (!widget?.fields || !Array.isArray(widget.fields) || widget.fields.length === 0) return;
+
+    log('[WidgetEditor] External widget change detected — re-syncing local state');
+
+    // Re-derive columns and rows from the unified fields array
+    const newColumns = widget.fields
+      .filter(f => f.shelf === 'columns')
+      .map(f => stripEntityPrefix(f.name));
+    const newRows = widget.fields
+      .filter(f => f.shelf === 'rows')
+      .map(f => stripEntityPrefix(f.name));
+
+    _setColumnsRaw(newColumns);
+    _setRowsRaw(newRows);
+
+    // Re-derive mark fields
+    const newMarkFields = widget.fields
+      .filter(f => f.shelf === 'marks')
+      .map(f => ({ field: stripEntityPrefix(f.name), type: f.markType || null }));
+    if (newMarkFields.length > 0) setMarkFields(newMarkFields);
+
+    // Re-derive aggregations
+    const newAggs = {};
+    widget.fields.forEach(f => {
+      if (f.aggregation && f.name) newAggs[f.name] = f.aggregation;
+    });
+    _setFieldAggregationsRaw(newAggs);
+
+    // Re-derive mark types
+    const newMarkTypes = {};
+    widget.fields.forEach(f => {
+      if (f.markType && f.name) newMarkTypes[f.name] = f.markType;
+    });
+    setFieldMarkTypes(newMarkTypes);
+
+    // Re-derive aliases
+    const newAliases = {};
+    widget.fields.forEach(f => {
+      if (f.alias && f.name) newAliases[f.name] = f.alias;
+    });
+    if (Object.keys(newAliases).length > 0) setColumnAliases(newAliases);
+
+    // Sync title and type
+    if (widget.title && widget.title !== title) setTitle(widget.title);
+    if (widget.type && widget.type !== widgetType) setWidgetType(widget.type);
+  }, [widget?.fields, widget?.title, widget?.type]);
   
   // Handler for toggling sort from pill click: no sort -> ASC -> DESC -> no sort
   const handlePillToggleSort = useCallback((fieldName, currentDirection) => {
@@ -995,7 +1069,8 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
         },
       };
       
-      // Write to global config
+      // Flag as internal so the external-sync effect skips this round-trip
+      internalUpdateRef.current = true;
       updateWidget(currentDashboard.id, widget.id, updatedWidget);
     };
 

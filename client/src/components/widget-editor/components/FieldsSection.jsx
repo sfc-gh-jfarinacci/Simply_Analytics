@@ -141,7 +141,7 @@ const FieldsSection = ({
   );
 };
 
-// Subcomponent for the fields list
+// Subcomponent for the fields list — three distinct categories
 const FieldsList = ({
   allDimensions,
   measures,
@@ -150,43 +150,58 @@ const FieldsList = ({
   setEditingCalculatedField,
   setShowFormulaBar,
   handleDeleteCalculatedField,
-}) => (
-  <div className="embedded-fields-list compact">
-    {/* All dimensions (includes facts, dimensions, date parts) */}
-    {allDimensions.map(dim => (
-      <DimensionChip 
-        key={dim.name} 
-        dim={dim} 
-        setFieldTooltip={setFieldTooltip} 
-      />
-    ))}
-    
-    {/* Measures */}
-    {(measures || []).map(measure => (
-      <MeasureChip 
-        key={measure.name} 
-        measure={measure} 
-        setFieldTooltip={setFieldTooltip} 
-      />
-    ))}
-    
-    {/* Calculated Fields */}
-    {customColumns.map(calc => (
-      <CalculatedChip 
-        key={calc.name} 
-        calc={calc} 
-        setFieldTooltip={setFieldTooltip}
-        setEditingCalculatedField={setEditingCalculatedField}
-        setShowFormulaBar={setShowFormulaBar}
-        handleDeleteCalculatedField={handleDeleteCalculatedField}
-      />
-    ))}
-  </div>
-);
+}) => {
+  const dimList = allDimensions || [];
+  const measList = measures || [];
+
+  return (
+    <div className="embedded-fields-list compact">
+      {/* Dimensions */}
+      {dimList.length > 0 && (
+        <div className="fields-category-header dimensions">Dimensions</div>
+      )}
+      {dimList.map(dim => (
+        <DimensionChip
+          key={dim.qualifiedName || dim.name}
+          dim={dim}
+          setFieldTooltip={setFieldTooltip}
+        />
+      ))}
+
+      {/* Measures */}
+      {measList.length > 0 && (
+        <div className="fields-category-header measures">Measures</div>
+      )}
+      {measList.map(measure => (
+        <MeasureChip
+          key={measure.qualifiedName || measure.name}
+          measure={measure}
+          setFieldTooltip={setFieldTooltip}
+        />
+      ))}
+
+      {/* Custom Fields */}
+      {customColumns.length > 0 && (
+        <div className="fields-category-header custom">Custom Fields</div>
+      )}
+      {customColumns.map(calc => (
+        <CalculatedChip
+          key={calc.name}
+          calc={calc}
+          setFieldTooltip={setFieldTooltip}
+          setEditingCalculatedField={setEditingCalculatedField}
+          setShowFormulaBar={setShowFormulaBar}
+          handleDeleteCalculatedField={handleDeleteCalculatedField}
+        />
+      ))}
+    </div>
+  );
+};
 
 // Dimension field chip
 const DimensionChip = ({ dim, setFieldTooltip }) => {
   const IconComponent = getDataTypeIcon(dim.type || dim.dataType || dim.data_type);
+  const label = dim.displayName || dim.name;
   
   return (
     <div
@@ -197,12 +212,13 @@ const DimensionChip = ({ dim, setFieldTooltip }) => {
         e.dataTransfer.setData('application/json', JSON.stringify({ name: dim.name, fieldType: 'dimension' }));
       }}
       onMouseMove={(e) => {
+        const entityInfo = dim.parentEntity ? ` • ${dim.parentEntity}` : '';
         setFieldTooltip({
           visible: true,
           name: dim.name,
           type: 'dimension',
           dataType: dim.type || dim.dataType || dim.data_type || 'VARCHAR',
-          description: dim.description || dim.parentEntity || dim.entity || '',
+          description: (dim.description || '') + entityInfo,
           x: e.clientX + 12,
           y: e.clientY + 12
         });
@@ -210,37 +226,41 @@ const DimensionChip = ({ dim, setFieldTooltip }) => {
       onMouseLeave={() => setFieldTooltip({ visible: false })}
     >
       <IconComponent className="chip-icon" />
-      <span className="chip-label">{dim.name}</span>
+      <span className="chip-label">{label}</span>
     </div>
   );
 };
 
 // Measure field chip
-const MeasureChip = ({ measure, setFieldTooltip }) => (
-  <div
-    className="embedded-field-chip measure"
-    draggable
-    onDragStart={(e) => {
-      e.dataTransfer.setData('field', JSON.stringify({ ...measure, fieldType: 'measure' }));
-      e.dataTransfer.setData('application/json', JSON.stringify({ name: measure.name, fieldType: 'measure' }));
-    }}
-    onMouseMove={(e) => {
-      setFieldTooltip({
-        visible: true,
-        name: measure.name,
-        type: 'measure',
-        dataType: measure.type || measure.dataType || measure.data_type || 'NUMBER',
-        description: measure.description || measure.expression || '',
-        x: e.clientX + 12,
-        y: e.clientY + 12
-      });
-    }}
-    onMouseLeave={() => setFieldTooltip({ visible: false })}
-  >
-    <FiTrendingUp className="chip-icon" />
-    <span className="chip-label">{measure.name}</span>
-  </div>
-);
+const MeasureChip = ({ measure, setFieldTooltip }) => {
+  const label = measure.displayName || measure.name;
+  return (
+    <div
+      className="embedded-field-chip measure"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('field', JSON.stringify({ ...measure, fieldType: 'measure' }));
+        e.dataTransfer.setData('application/json', JSON.stringify({ name: measure.name, fieldType: 'measure' }));
+      }}
+      onMouseMove={(e) => {
+        const entityInfo = measure.parentEntity ? ` • ${measure.parentEntity}` : '';
+        setFieldTooltip({
+          visible: true,
+          name: measure.name,
+          type: 'measure',
+          dataType: measure.type || measure.dataType || measure.data_type || 'NUMBER',
+          description: (measure.description || measure.expression || '') + entityInfo,
+          x: e.clientX + 12,
+          y: e.clientY + 12
+        });
+      }}
+      onMouseLeave={() => setFieldTooltip({ visible: false })}
+    >
+      <FiTrendingUp className="chip-icon" />
+      <span className="chip-label">{label}</span>
+    </div>
+  );
+};
 
 // Calculated field chip
 const CalculatedChip = ({ 

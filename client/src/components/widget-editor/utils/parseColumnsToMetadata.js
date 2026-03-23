@@ -45,24 +45,18 @@ export const parseColumnsToMetadata = (columns) => {
         }
       });
       
-      // Convert to arrays by kind - only include FACT, DIMENSION, and METRIC
       objectMap.forEach((obj) => {
         const kind = (obj.kind || '').toUpperCase();
         
-        // Only process FACT, DIMENSION, and METRIC kinds
-        if (kind !== 'FACT' && kind !== 'DIMENSION' && kind !== 'METRIC') {
-          return; // Skip all other kinds
-        }
-        
         const fieldObj = {
-          name: obj.name, // Already stripped of entity prefix
+          name: obj.name,
           type: obj.properties.DATA_TYPE || obj.properties.DATATYPE || '',
           description: obj.properties.DESCRIPTION || obj.properties.COMMENT || '',
           expression: obj.properties.EXPRESSION || obj.properties.EXPR || '',
           parentEntity: obj.parentEntity,
         };
         
-        if (kind === 'METRIC') {
+        if (kind === 'METRIC' || kind === 'MEASURE') {
           measures.push({
             ...fieldObj,
             aggregation: obj.properties.DEFAULT_AGGREGATION || obj.properties.AGGREGATION || 'sum',
@@ -105,7 +99,35 @@ export const parseColumnsToMetadata = (columns) => {
       });
     }
     
-    return { dimensions, measures, facts };
+    // When multiple entities exist, show the source entity on every field
+    // so users always know the granularity context (e.g., "REVENUE (Orders)").
+    // For single-entity views, keep labels clean with just the field name.
+    const entitySet = new Set(
+      [...dimensions, ...measures, ...facts]
+        .map(f => f.parentEntity)
+        .filter(Boolean)
+    );
+    const hasMultipleEntities = entitySet.size > 1;
+
+    const annotate = (field) => {
+      const entity = field.parentEntity;
+      const entityLabel = entity
+        ? entity.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        : null;
+      return {
+        ...field,
+        qualifiedName: entity ? `${entity}.${field.name}` : field.name,
+        displayName: hasMultipleEntities && entityLabel
+          ? `${field.name} (${entityLabel})`
+          : field.name,
+      };
+    };
+
+    return {
+      dimensions: dimensions.map(annotate),
+      measures: measures.map(annotate),
+      facts: facts.map(annotate),
+    };
   };
   
   export default parseColumnsToMetadata;

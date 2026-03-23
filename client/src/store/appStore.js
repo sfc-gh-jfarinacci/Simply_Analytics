@@ -822,9 +822,8 @@ export const useAppStore = create((set, get) => ({
         });
         objectMap.forEach((obj) => {
           const kind = (obj.kind || '').toUpperCase();
-          if (!['FACT', 'DIMENSION', 'METRIC'].includes(kind)) return;
           const fieldObj = { name: obj.name, type: obj.properties.DATA_TYPE || '', description: obj.properties.DESCRIPTION || '', parentEntity: obj.parentEntity };
-          if (kind === 'METRIC') measures.push({ ...fieldObj, aggregation: obj.properties.DEFAULT_AGGREGATION || 'sum' });
+          if (kind === 'METRIC' || kind === 'MEASURE') measures.push({ ...fieldObj, aggregation: obj.properties.DEFAULT_AGGREGATION || 'sum' });
           else if (kind === 'DIMENSION') dimensions.push(fieldObj);
           else if (kind === 'FACT') facts.push(fieldObj);
         });

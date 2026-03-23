@@ -53,9 +53,11 @@ import {
   FiRotateCw,
   FiHelpCircle,
   FiCheck,
+  FiZap,
 } from 'react-icons/fi';
 import { sfConnectionApi } from '../api/apiClient';
 import CortexAgentChat from '../components/CortexAgentChat';
+import AiChatPanel from '../components/ai/AiChatPanel';
 import '../styles/DashboardView.css';
 
 // Debug logging
@@ -124,6 +126,8 @@ const DashboardView = () => {
   const [editingWidget, setEditingWidget] = useState(null);
   const [isCreatingWidget, setIsCreatingWidget] = useState(false);
   const [dashboardName, setDashboardName] = useState('');
+  const [showAiChat, setShowAiChat] = useState(false);
+  const [aiFocusedWidgetId, setAiFocusedWidgetId] = useState(null);
   
   // Widget editor state
   const [selectedWidgetId, setSelectedWidgetId] = useState(null);
@@ -918,21 +922,21 @@ const DashboardView = () => {
 
   // Handle selecting a widget for editing (side panel or modal)
   const handleSelectWidget = (widget) => {
-    // Clear any existing editing config to prevent it from being applied to the new widget
     clearEditingWidgetConfig();
     
+    if (showAiChat) {
+      setAiFocusedWidgetId(widget.id);
+    }
+
     if (useSidePanel) {
-      // Side panel mode - panel slides in from left
       setSelectedWidgetId(widget.id);
       setEditingWidget(widget);
       setIsCreatingWidget(false);
     } else if (useInlineEditor) {
-      // Legacy inline mode
       setSelectedWidgetId(widget.id);
       setEditingWidget(widget);
       setIsCreatingWidget(false);
     } else {
-      // Legacy modal mode
       setEditingWidget(widget);
       setIsCreatingWidget(false);
     }
@@ -947,6 +951,14 @@ const DashboardView = () => {
 
   // Get the currently selected widget
   const selectedWidget = currentWidgets.find(w => w.id === selectedWidgetId);
+
+  // Always reflect the latest store version of the widget being edited.
+  // editingWidget is a stale snapshot; liveEditingWidget picks up external
+  // mutations (e.g. AI assistant) so the WidgetEditor prop stays current.
+  const liveEditingWidget = useMemo(() => {
+    if (!editingWidget) return null;
+    return currentWidgets.find(w => w.id === editingWidget.id) || editingWidget;
+  }, [editingWidget, currentWidgets]);
 
   // Find the next available position for a new widget in the grid
   const findNextAvailablePosition = (width = 4, height = 3) => {
@@ -1173,7 +1185,7 @@ const DashboardView = () => {
     : widgetTypes;
 
   return (
-    <div className={`dashboard-view ${editingWidget && useSidePanel ? 'has-side-panel' : ''} ${editingWidget && useInlineEditor ? 'has-config-panel' : ''}`}>
+    <div className={`dashboard-view ${editingWidget && useSidePanel ? 'has-side-panel' : ''} ${editingWidget && useInlineEditor ? 'has-config-panel' : ''} ${showAiChat ? 'has-ai-panel' : ''}`}>
       <div className="dashboard-main" ref={dashboardMainRef}>
         {currentDashboard ? (
           <>
@@ -1306,6 +1318,16 @@ const DashboardView = () => {
                         <FiSettings />
                       </button>
                     )}
+                    
+                    {/* AI Chat */}
+                    <button
+                      className={`toolbar-btn toolbar-btn-ai${showAiChat ? ' active' : ''}`}
+                      onClick={() => setShowAiChat(!showAiChat)}
+                      title="AI Assistant"
+                    >
+                      <FiZap />
+                      <span>AI</span>
+                    </button>
                     
                     {/* Primary action - Add Widget */}
                     <button className="toolbar-btn toolbar-btn-primary" onClick={handleOpenNewWidget}>
@@ -1898,7 +1920,7 @@ const DashboardView = () => {
       {/* Widget Editor - Side Panel Mode (new default) */}
       {useSidePanel && (
         <DashboardEditPanel
-          widget={editingWidget}
+          widget={liveEditingWidget}
           dashboardId={currentDashboard?.id}
           isOpen={!!editingWidget}
           isNew={isCreatingWidget}
@@ -1943,7 +1965,7 @@ const DashboardView = () => {
       {editingWidget && !useSidePanel && !useInlineEditor && (
         <WidgetEditor
           key={editingWidget.id || 'new'}
-          widget={editingWidget}
+          widget={liveEditingWidget}
           dashboardId={currentDashboard?.id}
           isNew={isCreatingWidget}
           inline={false}
@@ -2170,6 +2192,15 @@ const DashboardView = () => {
           role={currentDashboard.role}
         />
       )}
+
+      {/* AI Chat Panel - Right Sidebar */}
+      <AiChatPanel
+        isOpen={showAiChat}
+        onClose={() => setShowAiChat(false)}
+        focusedWidgetId={aiFocusedWidgetId}
+        onFocusWidget={setAiFocusedWidgetId}
+      />
+
     </div>
   );
 };

@@ -104,12 +104,19 @@ export const useWidgetConfig = ({
       const name = stripPrefix(rawName);
       if (!name) return;
       dimensions.add(name);
-      byName.set(name, {
+      const entry = {
         name,
         dataType: d.type || d.dataType || d.data_type || 'VARCHAR',
         semanticType: 'dimension',
         description: d.description || '',
-      });
+        parentEntity: d.parentEntity || null,
+        qualifiedName: d.qualifiedName || name,
+        displayName: d.displayName || name,
+      };
+      byName.set(name, entry);
+      if (d.qualifiedName && d.qualifiedName !== name) {
+        byName.set(d.qualifiedName.toUpperCase(), entry);
+      }
     });
     
     // Process measures (metrics)
@@ -118,12 +125,19 @@ export const useWidgetConfig = ({
       const name = stripPrefix(rawName);
       if (!name) return;
       measures.add(name);
-      byName.set(name, {
+      const entry = {
         name,
         dataType: m.type || m.dataType || m.data_type || 'NUMBER',
         semanticType: 'measure',
         description: m.description || '',
-      });
+        parentEntity: m.parentEntity || null,
+        qualifiedName: m.qualifiedName || name,
+        displayName: m.displayName || name,
+      };
+      byName.set(name, entry);
+      if (m.qualifiedName && m.qualifiedName !== name) {
+        byName.set(m.qualifiedName.toUpperCase(), entry);
+      }
     });
     
     // Process facts
@@ -132,12 +146,19 @@ export const useWidgetConfig = ({
       const name = stripPrefix(rawName);
       if (!name) return;
       facts.add(name);
-      byName.set(name, {
+      const entry = {
         name,
         dataType: f.type || f.dataType || f.data_type || 'NUMBER',
         semanticType: 'fact',
         description: f.description || '',
-      });
+        parentEntity: f.parentEntity || null,
+        qualifiedName: f.qualifiedName || name,
+        displayName: f.displayName || name,
+      };
+      byName.set(name, entry);
+      if (f.qualifiedName && f.qualifiedName !== name) {
+        byName.set(f.qualifiedName.toUpperCase(), entry);
+      }
     });
     
     return { byName, measures, dimensions, facts };

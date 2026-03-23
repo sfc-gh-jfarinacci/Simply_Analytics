@@ -210,7 +210,6 @@ function parseSemanticViewMetadata(columns) {
     // Categorize by kind
     objectMap.forEach((obj) => {
       const kind = (obj.kind || '').toUpperCase();
-      // Strip entity prefix from field names for cleaner queries
       const cleanName = stripPrefix(obj.name);
       const fieldObj = {
         name: cleanName,
@@ -219,8 +218,8 @@ function parseSemanticViewMetadata(columns) {
         parentEntity: obj.parentEntity,
       };
       
-      if (kind === 'METRIC') {
-        measures.push(fieldObj.name); // Store just the name for simpler matching
+      if (kind === 'METRIC' || kind === 'MEASURE') {
+        measures.push(fieldObj.name);
       } else if (kind === 'DIMENSION') {
         dimensions.push(fieldObj.name);
       } else if (kind === 'FACT') {

@@ -144,3 +144,33 @@
 {"level":"INFO","message":"[8:26:32.361 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
 {"level":"INFO","message":"[8:29:51.277 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
 {"level":"ERROR","message":"[6:36:58.749 PM]: Error issuing heartbeat call: Incoming request with IP/Token 173.172.159.211 is not allowed to access Snowflake. Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access."}
+{"level":"ERROR","message":"[7:58:47.260 PM]: Error issuing heartbeat call: Incoming request with IP/Token 173.172.159.211 is not allowed to access Snowflake. Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access."}
+{"level":"ERROR","message":"[9:27:52.582 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:27:52.869 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:27:53.155 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:28:09.847 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:28:11.720 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:28:12.779 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:28:13.631 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:28:15.936 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:42:52.576 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:42:52.866 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:42:53.151 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:43:09.843 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:43:11.717 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:43:12.776 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:43:13.626 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"ERROR","message":"[9:43:15.933 PM]: Error issuing heartbeat call: Unable to perform operation using terminated connection."}
+{"level":"INFO","message":"[7:42:39.307 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[10:37:41.872 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[10:42:16.545 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[10:43:55.043 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[10:52:20.683 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[10:53:53.797 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[11:07:30.366 AM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[12:56:36.731 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[12:59:08.391 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[1:18:00.829 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[1:47:23.726 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[1:47:30.585 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}
+{"level":"INFO","message":"[2:01:00.077 PM]: Configuring logger with level: 1, filePath: undefined, additionalLogToConsole: undefined"}

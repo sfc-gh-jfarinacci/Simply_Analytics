@@ -28,6 +28,7 @@ import { groupRoutes } from './routes/groups.js';
 import folderRoutes from './routes/folders.js';
 import samlRoutes from './routes/saml.js';
 import scimRoutes from './routes/scim.js';
+import { dashboardAiRoutes } from './routes/dashboardAi.js';
 
 // Middleware
 import { authMiddleware, optionalAuthMiddleware, getActiveSessionCount } from './middleware/auth.js';
@@ -100,6 +101,7 @@ app.use('/scim/v2', scimRoutes);
 app.use('/api/dashboard', authMiddleware, dashboardRoutes);
 app.use('/api/semantic', authMiddleware, semanticRoutes);
 app.use('/api/query', authMiddleware, queryRoutes);
+app.use('/api/dashboard-ai', authMiddleware, dashboardAiRoutes);
 
 // App metadata routes
 app.use('/api/users', authMiddleware, userRoutes);

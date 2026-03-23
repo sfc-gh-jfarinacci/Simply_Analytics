@@ -474,9 +474,12 @@ const DashboardWidget = ({
     if (viewRef?.fullyQualifiedName) return viewRef.fullyQualifiedName;
     if (viewRef?.name) return resolveToFQN(viewRef.name);
     
-    // Priority 3: Legacy modelId
+    // Priority 3: widget.semanticView (AI-generated widgets often set this)
+    if (widget.semanticView) return resolveToFQN(widget.semanticView);
+    
+    // Priority 4: Legacy modelId
     return resolveToFQN(widget.modelId);
-  }, [widget.semanticViewsReferenced, widget.modelId, liveSemanticViewId, currentDashboard?.semanticViewsReferenced]);
+  }, [widget.semanticViewsReferenced, widget.semanticView, widget.modelId, liveSemanticViewId, currentDashboard?.semanticViewsReferenced]);
 
   const {
     attributes,
@@ -807,9 +810,10 @@ const DashboardWidget = ({
       return; // Dashboard connection is broken - show error state
     }
     
-    // Load data if we have a semantic view and at least one dimension or measure
+    // Load data if we have a semantic view and at least one dimension or measure.
+    // Include aggregatedFields — an aggregated dimension still needs a query.
     const hasDimensions = dimensions.length > 0;
-    const hasMeasures = measures.length > 0;
+    const hasMeasures = measures.length > 0 || aggregatedFields.length > 0;
     
     // Check if widgetRefreshKey changed (user clicked Reconnect)
     const isNewRefreshKey = widgetRefreshKey > prevRefreshKeyRef.current;
@@ -1266,10 +1270,12 @@ const DashboardWidget = ({
     
     log('Rendering widget:', widget.id, 'type:', effectiveWidgetType);
     
-    // Use pre-computed chartQuery from widget if available (saved by WidgetEditor)
-    // This avoids recomputing dimensions/measures on every render
-    // Fallback to computed values for backwards compatibility with older widgets
-    const chartQuery = widget.chartQuery || {
+    // Use pre-computed chartQuery from widget if it has real content.
+    // An empty {} (e.g. from AI normalisation) is truthy but useless —
+    // fall back to values derived from the fields array.
+    const savedCQ = widget.chartQuery;
+    const hasValidCQ = savedCQ && (savedCQ.xAxis?.length > 0 || savedCQ.measures?.length > 0);
+    const chartQuery = hasValidCQ ? savedCQ : {
       xAxis: columnDimensions,
       rows: rowDimensions,
       series: colorField ? [colorField] : rowDimensions,
@@ -1553,7 +1559,7 @@ const DashboardWidget = ({
                   data={data} 
                   config={effectiveConfig}
                   widgetType={effectiveWidgetType}
-                  chartQuery={widget.chartQuery || {
+                  chartQuery={hasValidCQ ? savedCQ : {
                     xAxis: columnDimensions,
                     rows: rowDimensions,
                     series: colorField ? [colorField] : rowDimensions,
