@@ -377,3 +377,69 @@
   border-color: #a78bfa !important;
   box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.15);
 }
+
+/* Agent tool steps */
+.ai-chat-tool-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ai-chat-tool-step {
+  background: rgba(167, 139, 250, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.ai-chat-tool-step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-step-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.tool-step-icon.tool-step-success {
+  color: #34d399;
+}
+
+.tool-step-icon.tool-step-error {
+  color: #f87171;
+}
+
+.tool-step-name {
+  font-weight: 500;
+  color: #c4b5fd;
+  flex: 1;
+}
+
+.tool-step-time {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.ai-chat-tool-step-thinking {
+  color: #9ca3af;
+  font-size: 11px;
+  margin-top: 4px;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.ai-chat-tool-step-result {
+  color: #d1d5db;
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.tool-step-error-text {
+  color: #f87171;
+}

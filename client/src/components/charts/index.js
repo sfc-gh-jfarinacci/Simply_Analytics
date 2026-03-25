@@ -32,6 +32,15 @@ export * from './hierarchyCharts';
 // Sankey & Funnel Charts (D3.js)
 export * from './flowCharts';
 
+// Waterfall Charts (D3.js)
+export * from './waterfallCharts';
+
+// Scatter Charts (D3.js)
+export * from './scatterCharts';
+
+// Box Plot Charts (D3.js)
+export * from './boxPlotCharts';
+
 // MetricCard component
 export { default as MetricCard } from './MetricCard';
 

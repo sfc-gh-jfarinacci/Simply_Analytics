@@ -9,6 +9,9 @@ import {
   FiTarget,
   FiTrash2,
   FiMessageSquare,
+  FiDatabase,
+  FiSearch,
+  FiCheckCircle,
 } from 'react-icons/fi';
 import { useAppStore } from '../../store/appStore';
 import { dashboardAiApi } from '../../api/apiClient';
@@ -43,6 +46,31 @@ function buildSuggestions(metadata, focusedWidget) {
   }
 
   return s.slice(0, 4);
+}
+
+function formatToolName(tool) {
+  switch (tool) {
+    case 'sample_data': return 'Sampled data';
+    case 'check_cardinality': return 'Checked field cardinality';
+    case 'test_query': return 'Tested query';
+    default: return tool;
+  }
+}
+
+function formatToolResult(step) {
+  const r = step.result;
+  switch (step.tool) {
+    case 'sample_data':
+      return `${r.rowCount} row${r.rowCount !== 1 ? 's' : ''} returned · ${r.columns?.length || 0} columns`;
+    case 'check_cardinality':
+      return `${r.field}: ${r.distinctCount} distinct values · ${r.recommendation}`;
+    case 'test_query':
+      return r.success
+        ? `Query returned ${r.rowCount} row${r.rowCount !== 1 ? 's' : ''}`
+        : 'Query returned no data';
+    default:
+      return JSON.stringify(r).substring(0, 120);
+  }
 }
 
 const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
@@ -237,6 +265,7 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
         content: result.message || 'Done.',
         action: result.action,
         generationTime: result.generationTime,
+        toolSteps: result.toolSteps || [],
       };
       setMessages(prev => [...prev, assistantMsg]);
 
@@ -324,6 +353,32 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
               <div className="ai-chat-msg-system">{msg.content}</div>
             ) : (
               <>
+                {msg.toolSteps?.length > 0 && (
+                  <div className="ai-chat-tool-steps">
+                    {msg.toolSteps.map((step, idx) => (
+                      <div key={idx} className="ai-chat-tool-step">
+                        <div className="ai-chat-tool-step-header">
+                          {step.result?.error ? <FiAlertCircle className="tool-step-icon tool-step-error" /> : <FiCheckCircle className="tool-step-icon tool-step-success" />}
+                          <span className="tool-step-name">{formatToolName(step.tool)}</span>
+                          {step.result?.executionTime && (
+                            <span className="tool-step-time">{step.result.executionTime}ms</span>
+                          )}
+                        </div>
+                        {step.thinking && (
+                          <div className="ai-chat-tool-step-thinking">{step.thinking}</div>
+                        )}
+                        {step.result && !step.result.error && (
+                          <div className="ai-chat-tool-step-result">
+                            {formatToolResult(step)}
+                          </div>
+                        )}
+                        {step.result?.error && (
+                          <div className="ai-chat-tool-step-result tool-step-error-text">{step.result.error}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="ai-chat-msg-content">{msg.content}</div>
                 {msg.action && msg.action !== 'none' && (
                   <div className="ai-chat-msg-action">
@@ -340,7 +395,7 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
           <div className="ai-chat-msg ai-chat-msg-assistant">
             <div className="ai-chat-msg-loading">
               <FiLoader className="ai-chat-spinner" />
-              <span>Thinking...</span>
+              <span>Analyzing data & building...</span>
             </div>
           </div>
         )}

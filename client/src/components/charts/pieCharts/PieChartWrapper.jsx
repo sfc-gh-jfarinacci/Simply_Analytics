@@ -143,6 +143,7 @@ const PieChartWrapper = ({ data, config, query, fieldAggregations = {}, variant 
       legendPosition: config?.legendPosition || 'right',
       showLabels: config?.showLabels !== false,
       animate: shouldAnimate,
+      columnAliases: config?.columnAliases || {},
     };
 
     if (isTrellis) {

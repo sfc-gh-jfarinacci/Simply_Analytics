@@ -2,6 +2,7 @@ import { Router } from 'express';
 import yaml from 'js-yaml';
 import dashboardServicePg from '../services/dashboardServicePg.js';
 import dashboardAiService from '../services/dashboardAiService.js';
+import explorerAiService from '../services/explorerAiService.js';
 import { getCachedDashboardConnection } from '../services/connectionService.js';
 
 export const dashboardAiRoutes = Router();
@@ -252,6 +253,50 @@ dashboardAiRoutes.post('/chat', async (req, res) => {
     res.status(500).json({
       error: error.message || 'AI chat failed',
       code: 'AI_CHAT_ERROR',
+    });
+  }
+});
+
+/**
+ * POST /api/dashboard-ai/explore
+ * Data Explorer — investigative AI agent that queries data to answer business questions
+ */
+dashboardAiRoutes.post('/explore', async (req, res) => {
+  try {
+    const connection = await resolveConnection(req);
+    if (!connection) {
+      return res.status(401).json({ error: 'Snowflake connection required.', code: 'NO_CONNECTION' });
+    }
+
+    const {
+      question,
+      semanticViewMetadata,
+      conversationHistory,
+      model,
+    } = req.body;
+
+    if (!question) {
+      return res.status(400).json({ error: 'question is required' });
+    }
+
+    const startTime = Date.now();
+    const result = await explorerAiService.exploreData(connection, {
+      question,
+      semanticViewMetadata,
+      conversationHistory,
+      model,
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      generationTime: Date.now() - startTime,
+    });
+  } catch (error) {
+    console.error('Explorer AI error:', error);
+    res.status(500).json({
+      error: error.message || 'Explorer AI failed',
+      code: 'EXPLORER_ERROR',
     });
   }
 });

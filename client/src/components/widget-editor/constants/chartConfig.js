@@ -58,6 +58,8 @@ export const CHART_FORMAT_OPTIONS = {
    // Flow
     sankey: { showLabels: true, animate: true, labelColor: true, numberFormat: true, showTotals: true },
     funnel: { showLabels: true, animate: true, labelColor: true, numberFormat: true, showTotals: true },
+    waterfall: { showGrid: true, showLabels: true, animate: true, labelColor: true, showLegend: true, legendPosition: true, axisTitles: true, numberFormat: true, showTotals: true },
+    boxplot: { showGrid: true, showLabels: true, animate: true, labelColor: true, axisTitles: true, numberFormat: true, showTotals: true },
 
     // Data display
     table: { fontSize: true, numberFormat: true, showTotals: true },
@@ -90,6 +92,7 @@ export const CHART_FORMAT_OPTIONS = {
     boxplot: { showGrid: true, showLabels: false, animate: true, labelColor: '#a0a0b0', xAxisTitle: '', yAxisTitle: '', showTotals: false },
     sankey: { showLabels: true, animate: true, labelColor: '#a0a0b0', showTotals: false },
     funnel: { showLabels: true, animate: true, labelColor: '#a0a0b0', showTotals: false },
+    waterfall: { showGrid: true, showLabels: true, showLegend: true, legendPosition: 'top', animate: true, labelColor: '#a0a0b0', xAxisTitle: '', yAxisTitle: '', showTotals: false },
     table: { fontSize: 12, showTotals: false },
     pivot: { fontSize: 12, showTotals: true, heatmapColors: false },
     metric: { fontSize: 14, textColor: 'var(--text-primary)', showLabels: true, animate: true, metricIcon: '', showSparkline: true, comparisonLabel: 'Prior Period' },
@@ -175,11 +178,27 @@ export const CHART_FORMAT_OPTIONS = {
       case 'sankey':
         return {
           ...defaultMapping,
-          columnsRole: 'sourceTarget', // First = source, second = target
+          columnsRole: 'sourceTarget',
           rowsRole: 'ignored',
-          valuesRole: 'flow',         // Flow thickness
+          valuesRole: 'flow',
         };
-      
+
+      case 'waterfall':
+      case 'funnel':
+        return {
+          ...defaultMapping,
+          columnsRole: 'xAxis',
+          rowsRole: 'ignored',
+          valuesRole: 'yAxis',
+        };
+
+      case 'boxplot':
+        return {
+          ...defaultMapping,
+          columnsRole: 'xAxis',
+          rowsRole: 'ignored',
+          valuesRole: 'yAxis',
+        };
    
       
       // Table: flat display, no transformation
@@ -205,7 +224,12 @@ export const CHART_FORMAT_OPTIONS = {
       
       // Single metric: just one measure
       case 'metric':
-  
+        return {
+          ...defaultMapping,
+          columnsRole: 'ignored',
+          rowsRole: 'ignored',
+          valuesRole: 'display',
+        };
       
       // Scatter: X measure, Y measure, optional size/color
       case 'scatter':
@@ -370,6 +394,44 @@ export const CHART_FORMAT_OPTIONS = {
           maxValues: 1,
         };
 
+      case 'waterfall':
+        return {
+          ...defaultConfig,
+          columnsLabel: 'Categories',
+          columnsPlaceholder: 'Category dimension',
+          columnsHint: 'Each value becomes a step in the waterfall',
+          rowsLabel: 'Not Used',
+          rowsHint: 'Not applicable for waterfall',
+          valuesLabel: 'Value',
+          valuesPlaceholder: 'Measure',
+          valuesHint: 'Change amount for each step (positive/negative)',
+          minColumns: 1,
+          maxColumns: 1,
+          minRows: 0,
+          maxRows: 0,
+          minValues: 1,
+          maxValues: 1,
+        };
+
+      case 'boxplot':
+        return {
+          ...defaultConfig,
+          columnsLabel: 'Category',
+          columnsPlaceholder: 'Grouping dimension (optional)',
+          columnsHint: 'Creates one box per category value',
+          rowsLabel: 'Not Used',
+          rowsHint: 'Not applicable for box plot',
+          valuesLabel: 'Value',
+          valuesPlaceholder: 'Measure to analyze',
+          valuesHint: 'Distribution computed per category (Q1, median, Q3)',
+          minColumns: 0,
+          maxColumns: 1,
+          minRows: 0,
+          maxRows: 0,
+          minValues: 1,
+          maxValues: 1,
+        };
+
       // SCATTER - X/Y measures with optional dimensions
       case 'scatter':
         return {
@@ -393,7 +455,23 @@ export const CHART_FORMAT_OPTIONS = {
       
       // METRIC/GAUGE - Single value
       case 'metric':
-  
+        return {
+          ...defaultConfig,
+          columnsLabel: 'Not Used',
+          columnsHint: 'Not applicable for metric',
+          rowsLabel: 'Measure',
+          rowsPlaceholder: 'Measure to display',
+          rowsHint: 'Single numeric value to highlight',
+          valuesLabel: 'Not Used',
+          valuesHint: 'Not applicable for metric',
+          minColumns: 0,
+          maxColumns: 0,
+          minRows: 1,
+          maxRows: 1,
+          minValues: 0,
+          maxValues: 0,
+        };
+      
       // TABLE - Flat display
       case 'table':
         return {

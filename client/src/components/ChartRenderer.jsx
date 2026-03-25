@@ -6,7 +6,7 @@
  * entrance animation while D3's own transitions handle the rest.
  */
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { VerticalBarChartWrapper, HorizontalBarChartWrapper, DivergingBarChartWrapper, LineChartWrapper, AreaChartWrapper, PieChartWrapper, TreemapChartWrapper, IcicleChartWrapper, SankeyChartWrapper, FunnelChartWrapper, MetricCard, DataTable, getColorArray } from './charts';
+import { VerticalBarChartWrapper, HorizontalBarChartWrapper, DivergingBarChartWrapper, LineChartWrapper, AreaChartWrapper, PieChartWrapper, TreemapChartWrapper, IcicleChartWrapper, SankeyChartWrapper, FunnelChartWrapper, WaterfallChartWrapper, ScatterChartWrapper, BoxPlotChartWrapper, MetricCard, DataTable, getColorArray } from './charts';
 
 // Blueprint-style chart illustration - looks like it's being designed
 const ChartBlueprint = ({ type }) => {
@@ -53,6 +53,50 @@ const ChartBlueprint = ({ type }) => {
             <rect x="20" y="44" width="85" height="12" rx="2" fill={color} opacity="0.35" />
             <rect x="20" y="60" width="40" height="12" rx="2" fill={color} opacity="0.25" />
             <line x1="20" y1="8" x2="20" y2="76" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+          </svg>
+        );
+      case 'waterfall':
+        return (
+          <svg {...baseProps} viewBox="0 0 120 80">
+            <line x1="20" y1="70" x2="110" y2="70" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+            <line x1="20" y1="10" x2="20" y2="70" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+            <rect x="28" y="30" width="12" height="20" rx="1" fill="#22c55e" opacity="0.5" />
+            <rect x="46" y="20" width="12" height="10" rx="1" fill="#22c55e" opacity="0.5" />
+            <rect x="64" y="30" width="12" height="15" rx="1" fill="#ef4444" opacity="0.5" />
+            <rect x="82" y="15" width="12" height="55" rx="1" fill={color} opacity="0.4" />
+            <line x1="40" y1="30" x2="46" y2="30" stroke={mutedColor} strokeWidth="0.5" strokeDasharray="2,1" opacity="0.4" />
+            <line x1="58" y1="20" x2="64" y2="20" stroke={mutedColor} strokeWidth="0.5" strokeDasharray="2,1" opacity="0.4" />
+          </svg>
+        );
+      case 'scatter':
+        return (
+          <svg {...baseProps} viewBox="0 0 120 80">
+            <line x1="20" y1="70" x2="110" y2="70" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+            <line x1="20" y1="10" x2="20" y2="70" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+            <circle cx="35" cy="45" r="3" fill={color} opacity="0.5" />
+            <circle cx="50" cy="30" r="4" fill={color} opacity="0.4" />
+            <circle cx="60" cy="50" r="3" fill={color} opacity="0.45" />
+            <circle cx="75" cy="25" r="5" fill={color} opacity="0.35" />
+            <circle cx="85" cy="40" r="3" fill={color} opacity="0.5" />
+            <circle cx="95" cy="20" r="4" fill={color} opacity="0.4" />
+            <circle cx="45" cy="55" r="3" fill={color} opacity="0.3" />
+          </svg>
+        );
+      case 'boxplot':
+        return (
+          <svg {...baseProps} viewBox="0 0 120 80">
+            <line x1="20" y1="70" x2="110" y2="70" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+            <line x1="20" y1="10" x2="20" y2="70" stroke={mutedColor} strokeWidth="1" opacity="0.3" />
+            <line x1="45" y1="18" x2="45" y2="60" stroke={color} strokeWidth="1" opacity="0.4" />
+            <rect x="35" y="30" width="20" height="20" rx="2" fill={color} opacity="0.3" stroke={color} strokeWidth="1" />
+            <line x1="35" y1="40" x2="55" y2="40" stroke="#fff" strokeWidth="1.5" opacity="0.6" />
+            <line x1="40" y1="18" x2="50" y2="18" stroke={color} strokeWidth="1" opacity="0.4" />
+            <line x1="40" y1="60" x2="50" y2="60" stroke={color} strokeWidth="1" opacity="0.4" />
+            <line x1="85" y1="22" x2="85" y2="55" stroke={color} strokeWidth="1" opacity="0.4" />
+            <rect x="75" y="32" width="20" height="15" rx="2" fill={color} opacity="0.25" stroke={color} strokeWidth="1" />
+            <line x1="75" y1="38" x2="95" y2="38" stroke="#fff" strokeWidth="1.5" opacity="0.6" />
+            <line x1="80" y1="22" x2="90" y2="22" stroke={color} strokeWidth="1" opacity="0.4" />
+            <line x1="80" y1="55" x2="90" y2="55" stroke={color} strokeWidth="1" opacity="0.4" />
           </svg>
         );
       default:
@@ -154,14 +198,26 @@ const resolveChart = (type, data, config, query, fieldAggregations) => {
     case 'funnel':
       return <FunnelChartWrapper data={data} config={config} query={query} fieldAggregations={fieldAggregations} />;
     case 'waterfall':
-      return <PlaceholderChart type="Waterfall" />;
+      return <WaterfallChartWrapper data={data} config={config} query={query} fieldAggregations={fieldAggregations} />;
+    case 'scatter':
+      return <ScatterChartWrapper data={data} config={config} query={query} fieldAggregations={fieldAggregations} />;
+    case 'boxplot':
+      return <BoxPlotChartWrapper data={data} config={config} query={query} fieldAggregations={fieldAggregations} />;
     case 'table':
       return <DataTable data={data} config={config} query={{
         rowFields: [...(query?.rows || []), ...(query?.labelFields || [])],
         columnFields: query?.xAxis || query?.columns || [],
         measureFields: query?.measures || [],
         markFields: query?.marks || {},
-      }} />;
+      }} pivot={false} />;
+    case 'pivot':
+    case 'crosstab':
+      return <DataTable data={data} config={config} query={{
+        rowFields: [...(query?.rows || []), ...(query?.labelFields || [])],
+        columnFields: query?.xAxis || query?.columns || [],
+        measureFields: query?.measures || [],
+        markFields: query?.marks || {},
+      }} pivot={true} />;
     case 'metric':
       return <MetricCard data={data} config={config} query={query} />;
     default:

@@ -154,6 +154,7 @@ const DivergingBarChartWrapper = ({ data, config, query, fieldAggregations = {} 
       xAxisTitle: config?.xAxisTitle || '',
       yAxisTitle: config?.yAxisTitle || '',
       animate: shouldAnimate,
+      columnAliases: config?.columnAliases || {},
     };
 
     if (isTrellis) {

@@ -16,6 +16,9 @@ import {
   FiActivity,
   FiShare2,
   FiFilter,
+  FiBarChart,
+  FiTarget,
+  FiBox,
 } from 'react-icons/fi';
 
 // Widget type categories with nested options
@@ -25,6 +28,7 @@ export const CHART_CATEGORIES = [
     icon: FiTable,
     types: [
       { type: 'table', icon: FiTable, label: 'Table' },
+      { type: 'pivot', icon: FiGrid, label: 'Matrix' },
       { type: 'metric', icon: FiHash, label: 'Metric Card' },
     ]
   },
@@ -69,6 +73,15 @@ export const CHART_CATEGORIES = [
     types: [
       { type: 'sankey', icon: FiShare2, label: 'Sankey' },
       { type: 'funnel', icon: FiFilter, label: 'Funnel' },
+      { type: 'waterfall', icon: FiBarChart, label: 'Waterfall' },
+    ]
+  },
+  {
+    category: 'Statistical',
+    icon: FiTarget,
+    types: [
+      { type: 'scatter', icon: FiTarget, label: 'Scatter' },
+      { type: 'boxplot', icon: FiBox, label: 'Box Plot' },
     ]
   },
  

@@ -1,11 +1,28 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { FiX, FiSend, FiLoader, FiAlertCircle, FiTrash2 } from 'react-icons/fi';
+import { FiX, FiSend, FiLoader, FiAlertCircle, FiTrash2, FiFilter } from 'react-icons/fi';
 import { HiSparkles } from 'react-icons/hi2';
 import { BsStars } from 'react-icons/bs';
 import { sfConnectionApi } from '../api/apiClient';
 import '../styles/CortexAgentChat.css';
 
-const CortexAgentChat = ({ connectionId, cortexAgents = [], role, onClose }) => {
+function extractFilterSuggestions(text) {
+  if (!text) return [];
+  const suggestions = [];
+  const patterns = [
+    /(?:filter|filtered)\s+(?:by|to|on|for)\s+["']?(\w+)["']?\s*(?:=|is|equals?)\s*["']?([^"'\n,.]+)["']?/gi,
+    /["']?(\w+)["']?\s+(?:=|is|equals?)\s+["']?([^"'\n,.]+)["']?\s+(?:is|was|shows?|has)/gi,
+    /(?:in|for|the)\s+["']?(\w+)["']?\s+(?:region|category|segment|group|department|status)\s+["']?([^"'\n,.]+)["']?/gi,
+  ];
+  for (const re of patterns) {
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      suggestions.push({ field: match[1].toUpperCase(), value: match[2].trim() });
+    }
+  }
+  return suggestions.slice(0, 3);
+}
+
+const CortexAgentChat = ({ connectionId, cortexAgents = [], role, onClose, tempFilters = [], onApplyTempFilter, onClearTempFilters }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState('');
   const [messages, setMessages] = useState([]);
@@ -356,10 +373,29 @@ const CortexAgentChat = ({ connectionId, cortexAgents = [], role, onClose }) => 
       );
     }
 
+    const filterSuggestions = !streaming && content && onApplyTempFilter
+      ? extractFilterSuggestions(content)
+      : [];
+
     return (
       <div className="cortex-msg-text">
         {renderMarkdown((content || 'No response').trimStart())}
         {streaming && <span className="cortex-cursor" />}
+        {filterSuggestions.length > 0 && (
+          <div className="cortex-filter-suggestions">
+            {filterSuggestions.map((fs, i) => (
+              <button
+                key={i}
+                className="cortex-filter-btn"
+                onClick={() => onApplyTempFilter({ field: fs.field, operator: '=', value: fs.value })}
+                title={`Filter dashboard to ${fs.field} = ${fs.value}`}
+              >
+                <FiFilter />
+                <span>Filter {fs.field} = {fs.value}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -381,6 +417,12 @@ const CortexAgentChat = ({ connectionId, cortexAgents = [], role, onClose }) => 
           <span className="cortex-chat-title">Cortex Agent</span>
         </div>
         <div className="cortex-chat-header-actions">
+          {tempFilters.length > 0 && onClearTempFilters && (
+            <button className="cortex-chat-header-btn cortex-filter-active" onClick={onClearTempFilters} title={`Clear ${tempFilters.length} temp filter${tempFilters.length > 1 ? 's' : ''}`}>
+              <FiFilter />
+              <span className="cortex-filter-count">{tempFilters.length}</span>
+            </button>
+          )}
           <button className="cortex-chat-header-btn" onClick={clearChat} title="Clear chat">
             <FiTrash2 />
           </button>

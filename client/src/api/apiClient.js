@@ -2061,6 +2061,18 @@ export const dashboardAiApi = {
     }
     return res.json();
   },
+
+  async explore(params) {
+    const res = await fetchApi('/dashboard-ai/explore', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const data = await safeJson(res, { error: 'Explorer AI failed' });
+      throw new Error(data.error || 'Explorer AI failed');
+    }
+    return res.json();
+  },
 };
 
 // Default export

@@ -69,9 +69,10 @@ const createValueFormatter = () => (value) => {
 };
 
 const createDisplayNameGetter = (aliases) => (name) => {
-  if (!name) return '';
-  if (aliases?.[name]) return aliases[name];
-  return String(name).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  if (name == null) return '';
+  const str = String(name);
+  if (aliases?.[str]) return aliases[str];
+  return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
 
 export const createFunnelChart = (container, config, data, options = {}) => {

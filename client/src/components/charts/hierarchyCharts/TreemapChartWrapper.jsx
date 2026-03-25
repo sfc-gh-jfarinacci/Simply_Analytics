@@ -89,6 +89,7 @@ const TreemapChartWrapper = ({ data, config, query, fieldAggregations = {} }) =>
       colors: config?.colors,
       showLabels: config?.showLabels !== false,
       animate: shouldAnimate,
+      columnAliases: config?.columnAliases || {},
     });
 
     return () => {

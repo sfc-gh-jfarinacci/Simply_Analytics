@@ -184,6 +184,9 @@ const DashboardView = () => {
   
   // Edit mode state - dashboards open in view mode by default
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Temporary session-only filters from Cortex Agent (not persisted)
+  const [tempFilters, setTempFilters] = useState([]);
   
   // Connection state for dashboard-level reconnection
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -1515,6 +1518,7 @@ const DashboardView = () => {
                         isSelected={selectedWidgetId === widget.id}
                         isEditing={useInlineEditor && selectedWidgetId === widget.id}
                         dashboardId={currentDashboard?.id}
+                        tempFilters={tempFilters}
                         isGridLayout={true}
                         onAutoSave={(updates) => {
                           // Auto-save widget changes in real-time
@@ -2190,6 +2194,9 @@ const DashboardView = () => {
           connectionId={currentDashboard.connection_id}
           cortexAgents={currentDashboard.cortexAgents}
           role={currentDashboard.role}
+          tempFilters={tempFilters}
+          onApplyTempFilter={(filter) => setTempFilters(prev => [...prev.filter(f => f.field !== filter.field), filter])}
+          onClearTempFilters={() => setTempFilters([])}
         />
       )}
 

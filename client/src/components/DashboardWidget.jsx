@@ -47,6 +47,48 @@ import WidgetEditor from './widget-editor';
 // Utils only - all chart rendering goes through ChartRenderer
 import { useStableResize } from './charts';
 
+class ChartErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Chart render error:', error, info?.componentStack);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="widget-render-error">
+          <div className="render-error-icon">⚠️</div>
+          <div className="render-error-title">Unable to render chart</div>
+          <div className="render-error-message">
+            {this.state.error?.message || 'An unexpected error occurred while rendering this visualization.'}
+          </div>
+          <button
+            className="render-error-retry"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Debug logging
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const log = (...args) => DEBUG && log(...args);
@@ -128,6 +170,8 @@ const DashboardWidget = ({
   const [insights, setInsights] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState(null);
+  const [autoInsightSummary, setAutoInsightSummary] = useState(null);
+  const autoInsightRequestedRef = useRef(false);
   
   // Show underlying data toggle
   const [showData, setShowData] = useState(false);
@@ -996,6 +1040,26 @@ const DashboardWidget = ({
       if (thisRequestId === loadRequestId.current) {
         setData(chartData);
         setCachedResult(cacheKey, chartData);
+
+        // Auto-generate a quick insight if we haven't already for this widget
+        if (!autoInsightRequestedRef.current && chartData?.rows?.length > 2 &&
+            effectiveWidgetType !== 'table' && effectiveWidgetType !== 'metric' && effectiveWidgetType !== 'pivot') {
+          autoInsightRequestedRef.current = true;
+          semanticApi.cortexInsights({
+            data: chartData.rows.slice(0, 20),
+            query: `Quick insight for widget: ${widget.title}. Respond with ONE sentence only — the single most interesting finding.`,
+            semanticView: semanticViewFQN,
+            connectionId: currentDashboard?.connection_id,
+            role: currentDashboard?.role,
+            warehouse: currentDashboard?.warehouse,
+          }).then(result => {
+            let text = result?.insights;
+            if (text && typeof text === 'string') {
+              try { const p = JSON.parse(text); text = p.choices?.[0]?.messages || p.choices?.[0]?.message?.content || text; } catch {}
+            }
+            if (text && text.length < 200) setAutoInsightSummary(text);
+          }).catch(() => {});
+        }
       }
     } catch (err) {
       const errorMessage = err.message || 'Unknown error';
@@ -1137,6 +1201,7 @@ const DashboardWidget = ({
       case 'icicle': return <FiLayers />;
       case 'sankey': return <FiActivity />;
       case 'table': return <FiTable />;
+      case 'pivot': case 'crosstab': return <FiGrid />;
       case 'metric': return <FiHash />;
       default: return <FiBarChart2 />;
     }
@@ -1384,6 +1449,15 @@ const DashboardWidget = ({
           <span className="widget-title-text">
             {widget.title}
           </span>
+          {autoInsightSummary && !showInsights && (
+            <button
+              className="widget-auto-insight-badge"
+              onClick={() => { setShowInsights(true); generateInsights(); }}
+              title={autoInsightSummary}
+            >
+              <HiSparkles />
+            </button>
+          )}
         </div>
         {/* Show action buttons - different for edit mode vs view mode */}
         {!isEditMode && (
@@ -1430,7 +1504,9 @@ const DashboardWidget = ({
         )}
       </div>
       <div className={`widget-content ${widget?.config?.refreshEnabled === false ? 'preview-paused' : ''}`}>
-        {renderContent()}
+        <ChartErrorBoundary resetKey={`${effectiveWidgetType}-${data?.rows?.length}`}>
+          {renderContent()}
+        </ChartErrorBoundary>
         {/* Paused overlay when refresh is disabled */}
         {widget?.config?.refreshEnabled === false && (
           <div className="widget-paused-overlay">
@@ -1553,26 +1629,32 @@ const DashboardWidget = ({
                 position: 'relative',
                 overflow: 'hidden'
               }}>
+                <ChartErrorBoundary resetKey={`${effectiveWidgetType}-${data?.rows?.length}-expanded`}>
                 <ExpandedContent 
                   key={`expanded-${widget.id}-${expandKey}`} 
                   widget={widget} 
                   data={data} 
                   config={effectiveConfig}
                   widgetType={effectiveWidgetType}
-                  chartQuery={hasValidCQ ? savedCQ : {
-                    xAxis: columnDimensions,
-                    rows: rowDimensions,
-                    series: colorField ? [colorField] : rowDimensions,
-                    measures: chartMeasures,
-                    marks: widget.marks || {},
-                    colorField: colorField,
-                    clusterField: clusterField,
-                    tooltipFields: tooltipFields,
-                    detailFields: detailFields,
-                    labelFields: labelFields || [],
-                  }}
+                  chartQuery={(() => {
+                    const cq = widget.chartQuery;
+                    const valid = cq && (cq.xAxis?.length > 0 || cq.measures?.length > 0);
+                    return valid ? cq : {
+                      xAxis: columnDimensions,
+                      rows: rowDimensions,
+                      series: colorField ? [colorField] : rowDimensions,
+                      measures: chartMeasures,
+                      marks: widget.marks || {},
+                      colorField: colorField,
+                      clusterField: clusterField,
+                      tooltipFields: tooltipFields,
+                      detailFields: detailFields,
+                      labelFields: labelFields || [],
+                    };
+                  })()}
                   showData={showData}
                 />
+                </ChartErrorBoundary>
               </div>
             </div>
           </div>

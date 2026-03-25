@@ -14,7 +14,7 @@ import '../../styles/DataTable.css';
  * Supports regular tables and cross-tab (pivot) views
  * No in-place sorting/filtering - that's handled via SQL
  */
-const DataTable = ({ data, config, query }) => {
+const DataTable = ({ data, config, query, pivot = false }) => {
   const theme = useAppStore(state => state.theme);
   const tableContainerRef = useRef(null);
   
@@ -70,8 +70,7 @@ const DataTable = ({ data, config, query }) => {
     }
   }, [fieldFormats, defaultNumberFormat, defaultDecimals]);
   
-  // Determine if we should use cross-tab (pivot) mode
-  const isCrossTab = rowFields.length > 0 && columnFields.length > 0;
+  const isCrossTab = pivot && rowFields.length > 0 && columnFields.length > 0;
   
   // Helper to get actual column name (case-insensitive, handles date part naming)
   const getActualColName = useCallback((fieldName) => {
@@ -97,11 +96,13 @@ const DataTable = ({ data, config, query }) => {
   
   // Get display name with alias support
   const getDisplayName = useCallback((colName) => {
-    const aliasKey = Object.keys(columnAliases).find(k => k.toUpperCase() === colName.toUpperCase());
+    if (colName == null) return '';
+    const str = String(colName);
+    const aliasKey = Object.keys(columnAliases).find(k => k.toUpperCase() === str.toUpperCase());
     if (aliasKey && columnAliases[aliasKey]) {
       return columnAliases[aliasKey];
     }
-    return colName;
+    return str;
   }, [columnAliases]);
   
   // Helper to extract field name from string or object
@@ -113,10 +114,15 @@ const DataTable = ({ data, config, query }) => {
   }, []);
   
   // Transform data for cross-tab mode with hierarchical column groups
-  const { pivotedData, pivotColumns } = useMemo(() => {
+  const MAX_PIVOT_COLUMNS = 500;
+  const MAX_PIVOT_CELLS = 100000;
+
+  const { pivotedData, pivotColumns, pivotError } = useMemo(() => {
     if (!isCrossTab || !data?.rows?.length) {
-      return { pivotedData: null, pivotColumns: null };
+      return { pivotedData: null, pivotColumns: null, pivotError: null };
     }
+
+    try {
     
     const actualRowFields = rowFields.map(getActualColName);
     const actualColFields = columnFields.map(getActualColName);
@@ -131,6 +137,29 @@ const DataTable = ({ data, config, query }) => {
       });
       return { field, values: uniqueVals };
     });
+
+    // Guard 1: total leaf columns
+    const leafMultiplier = hasMeasures ? Math.max(actualMeasureFields.length, 1) : 1;
+    const totalLeafColumns = colFieldValues.reduce((acc, cv) => acc * cv.values.length, 1) * leafMultiplier;
+    if (totalLeafColumns > MAX_PIVOT_COLUMNS) {
+      const biggest = colFieldValues.reduce((a, b) => b.values.length > a.values.length ? b : a);
+      return {
+        pivotedData: null,
+        pivotColumns: null,
+        pivotError: `Too many pivot columns (${totalLeafColumns.toLocaleString()} would be generated). The field "${biggest.field}" has ${biggest.values.length.toLocaleString()} distinct values. Add a filter to reduce cardinality, or switch to a table/bar chart.`,
+      };
+    }
+
+    // Guard 2: total unique row groups × columns (total cells)
+    const uniqueRowKeys = new Set(data.rows.map(row => actualRowFields.map(f => row[f]).join('|||')));
+    const estimatedCells = uniqueRowKeys.size * totalLeafColumns;
+    if (estimatedCells > MAX_PIVOT_CELLS) {
+      return {
+        pivotedData: null,
+        pivotColumns: null,
+        pivotError: `Pivot would generate ~${estimatedCells.toLocaleString()} cells (${uniqueRowKeys.size.toLocaleString()} rows × ${totalLeafColumns.toLocaleString()} columns). Add filters to reduce the data, or switch to a table or chart.`,
+      };
+    }
     
     // Group data by row fields
     const rowGroups = new Map();
@@ -264,7 +293,16 @@ const DataTable = ({ data, config, query }) => {
       columns.push(...buildColumnGroups(0));
     }
     
-    return { pivotedData: flattenedRows, pivotColumns: columns };
+    return { pivotedData: flattenedRows, pivotColumns: columns, pivotError: null };
+
+    } catch (err) {
+      console.error('Pivot computation failed:', err);
+      return {
+        pivotedData: null,
+        pivotColumns: null,
+        pivotError: `Failed to build pivot: ${err.message || 'unexpected error'}. Try reducing the data with filters or switching to a table view.`,
+      };
+    }
   }, [isCrossTab, data, rowFields, columnFields, measureFields, getActualColName, getDisplayName, numFormatter]);
   
   // Server-side sorts from widget config
@@ -456,6 +494,18 @@ const DataTable = ({ data, config, query }) => {
   // Choose columns and data based on mode
   const columns = isCrossTab ? pivotColumns : standardColumns;
   const tableData = isCrossTab ? pivotedData : sortedRowData;
+
+  if (pivotError) {
+    return (
+      <div className={`data-table-container ${theme}`}>
+        <div className="data-table-pivot-error">
+          <div className="pivot-error-icon">⚠️</div>
+          <div className="pivot-error-title">Pivot too large</div>
+          <div className="pivot-error-message">{pivotError}</div>
+        </div>
+      </div>
+    );
+  }
   
   const showTotals = config?.showTotals === true;
   

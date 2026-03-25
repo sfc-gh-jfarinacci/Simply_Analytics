@@ -143,6 +143,37 @@
   font-size: 14px;
 }
 
+/* ========== Pivot Error State ========== */
+.data-table-pivot-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 160px;
+  padding: 24px;
+  text-align: center;
+  gap: 8px;
+}
+
+.pivot-error-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.pivot-error-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.pivot-error-message {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  max-width: 360px;
+  line-height: 1.5;
+}
+
 /* ============================================================
    DARK THEME
    ============================================================ */

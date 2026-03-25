@@ -17,6 +17,7 @@ import {
   EditorHeader,
   AGGREGATION_OPTIONS,
 } from './components';
+import EditorCopilot from './components/EditorCopilot';
 import '../../styles/WidgetEditor.css';
 
 // Constants and utilities from widget-editor module
@@ -1776,10 +1777,11 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
   // Embedded mode - editor inside the widget card itself
   // Collapsible sections state for space efficiency
   const [expandedSections, setExpandedSections] = useState({
-    fields: false,      // Closed by default - user can expand if needed
-    shelves: true,      // Data Layout open by default
+    fields: false,
+    shelves: true,
     filters: false,
-    format: false
+    format: false,
+    copilot: false,
   });
   
   const toggleSection = (section) => {
@@ -1928,6 +1930,30 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
               fieldConfigs={fieldConfigs}
               setFieldConfigs={setFieldConfigs}
             />
+
+            {/* Collapsible: AI Copilot */}
+            <EditorCopilot
+              expanded={expandedSections.copilot}
+              toggleSection={toggleSection}
+              widget={widget}
+              widgetType={widgetType}
+              semanticViewId={semanticViewId}
+              columns={columns}
+              rows={rows}
+              filters={filters}
+              sorts={sorts}
+              customColumns={customColumns}
+              viewMetadata={viewMetadata}
+              fieldMarkTypes={fieldMarkTypes}
+              setWidgetType={setWidgetType}
+              setColumns={setColumns}
+              setRows={setRows}
+              setTitle={setTitle}
+              setFilters={setFilters}
+              setSorts={setSorts}
+              setFieldMarkTypes={setFieldMarkTypes}
+              setCustomColumns={setCustomColumns}
+            />
           </div>
 
           {/* Preview is shown in the DashboardWidget on the canvas, not here */}
@@ -1997,6 +2023,7 @@ const WidgetEditor = ({ widget, dashboardId, onClose, onSave, onAutoSave, isNew 
           setExprAutocomplete={setExprAutocomplete}
           insertExprAutocomplete={insertExprAutocomplete}
         />
+
       </div>
     );
 };

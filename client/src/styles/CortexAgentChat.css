@@ -572,3 +572,58 @@
   0%, 100% { opacity: 1; }
   50%      { opacity: 0; }
 }
+
+/* Filter suggestions from agent responses */
+.cortex-filter-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.cortex-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 14px;
+  background: rgba(167, 139, 250, 0.08);
+  color: #c4b5fd;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cortex-filter-btn:hover {
+  background: rgba(167, 139, 250, 0.18);
+  border-color: #a78bfa;
+}
+
+.cortex-filter-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cortex-filter-active {
+  color: #a78bfa !important;
+  position: relative;
+}
+
+.cortex-filter-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #7c3aed;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

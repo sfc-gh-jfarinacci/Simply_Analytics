@@ -216,9 +216,10 @@ const createValueFormatter = (fieldFormats = {}) => (value, fieldName) => {
 };
 
 const createDisplayNameGetter = (columnAliases = {}) => (fieldName) => {
-  if (!fieldName) return '';
-  const aliasKey = Object.keys(columnAliases).find(k => k.toUpperCase() === fieldName.toUpperCase());
-  return (aliasKey && columnAliases[aliasKey]) || fieldName;
+  if (fieldName == null) return '';
+  const str = String(fieldName);
+  const aliasKey = Object.keys(columnAliases).find(k => k.toUpperCase() === str.toUpperCase());
+  return (aliasKey && columnAliases[aliasKey]) || str;
 };
 
 // ============================================================================

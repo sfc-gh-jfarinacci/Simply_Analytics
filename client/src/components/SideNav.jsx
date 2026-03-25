@@ -14,6 +14,7 @@ import {
   FiSettings,
   FiSun,
   FiMoon,
+  FiSearch,
 } from 'react-icons/fi';
 import SimplyLogo from '../assets/Simply_Logo.png';
 import '../styles/SideNav.css';
@@ -91,8 +92,9 @@ const SideNav = ({ onSignIn }) => {
     // Not signed in: only show Home
     navItems.push({ id: 'home', icon: FiHome, label: 'Home' });
   } else {
-    // Signed in: show Dashboards (no Home)
+    // Signed in: show Dashboards and Explorer
     navItems.push({ id: 'dashboards', icon: FiGrid, label: 'Dashboards' });
+    navItems.push({ id: 'explorer', icon: FiSearch, label: 'Explorer' });
     
     // Add Users tab for owners and admins
     if (['owner', 'admin'].includes(currentRole)) {

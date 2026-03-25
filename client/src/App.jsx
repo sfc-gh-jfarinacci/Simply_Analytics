@@ -8,6 +8,7 @@ import DashboardView from './views/DashboardView';
 import GettingStarted from './views/GettingStarted';
 import UsersManagement from './views/UsersManagement';
 import UserSettings from './views/UserSettings';
+import DataExplorer from './views/DataExplorer';
 import SignInModal from './components/SignInModal';
 import SessionWarningModal from './components/SessionWarningModal';
 import { startSessionMonitoring, stopSessionMonitoring, persistSession } from './api/apiClient';
@@ -200,6 +201,14 @@ function App() {
                 <DashboardsPage />
               </ProtectedRoute>
             } 
+          />
+          <Route
+            path="/explorer"
+            element={
+              <ProtectedRoute>
+                <DataExplorer />
+              </ProtectedRoute>
+            }
           />
           <Route 
             path="/users" 

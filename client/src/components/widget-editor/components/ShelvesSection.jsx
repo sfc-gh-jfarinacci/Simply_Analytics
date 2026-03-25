@@ -7,21 +7,14 @@ import { FiColumns, FiPlus, FiX, FiMove, FiChevronDown, FiChevronRight, FiDrople
 import { TbSum, TbGripVertical, TbArrowUp, TbArrowDown } from 'react-icons/tb';
 
 // Mark types with their icons and labels
-// All mark types
 const MARK_TYPES = [
-  { type: 'cluster', icon: FiColumns, label: 'Cluster', hint: 'Group bars side-by-side (columns only)' },
-  { type: 'color', icon: FiDroplet, label: 'Color', hint: 'Color by this field (rows only)' },
+  { type: 'cluster', icon: FiColumns, label: 'Cluster', hint: 'Group bars side-by-side' },
+  { type: 'color', icon: FiDroplet, label: 'Color', hint: 'Color by this field' },
   { type: 'size', icon: FiMaximize2, label: 'Size', hint: 'Size by this field (bubbles/points)' },
   { type: 'label', icon: FiType, label: 'Label', hint: 'Show field value as text on chart' },
   { type: 'detail', icon: FiGrid, label: 'Detail/Trellis', hint: 'Break down into small multiples' },
   { type: 'tooltip', icon: FiInfo, label: 'Tooltip', hint: 'Show in hover tooltip' },
 ];
-
-// Mark types available for columns (can cluster, no color)
-const COLUMN_MARK_TYPES = MARK_TYPES.filter(m => m.type !== 'color');
-
-// Mark types available for rows (can color, no cluster)
-const ROW_MARK_TYPES = MARK_TYPES.filter(m => m.type !== 'cluster');
 
 // Aggregation options for measures
 const AGGREGATION_OPTIONS = [
@@ -262,8 +255,7 @@ const ShelvesSection = ({
               <span>Mark Type</span>
             </div>
             <div className="pill-popup-content">
-              {/* Use shelf-specific mark types: columns can cluster but not color, rows can color but not cluster */}
-              {(markPopup.shelfType === 'columns' ? COLUMN_MARK_TYPES : ROW_MARK_TYPES).map(mark => {
+              {MARK_TYPES.map(mark => {
                 const Icon = mark.icon;
                 return (
                   <button
