@@ -998,7 +998,7 @@
 .dashboard-canvas {
   flex: 1;
   overflow: auto;
-  padding: 24px 28px;
+  padding: 28px 32px;
   background-color: var(--bg-canvas, var(--bg-secondary));
   display: flex;
   flex-direction: column;
@@ -1050,7 +1050,6 @@
 
 /* GridStack - DashboardWidget IS the grid-stack-item */
 .grid-stack .grid-stack-item {
-  padding: 0;
   overflow: visible;
 }
 
@@ -1088,11 +1087,11 @@
   pointer-events: auto;
 }
 
-/* Corner positions */
-.grid-stack .grid-stack-item > .ui-resizable-ne { top: -5px; right: -5px; cursor: nesw-resize; }
-.grid-stack .grid-stack-item > .ui-resizable-nw { top: -5px; left: -5px; cursor: nwse-resize; }
-.grid-stack .grid-stack-item > .ui-resizable-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
-.grid-stack .grid-stack-item > .ui-resizable-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+/* Corner positions - inset by widget padding (5px) to align with card edges */
+.grid-stack .grid-stack-item > .ui-resizable-ne { top: 0; right: 0; cursor: nesw-resize; }
+.grid-stack .grid-stack-item > .ui-resizable-nw { top: 0; left: 0; cursor: nwse-resize; }
+.grid-stack .grid-stack-item > .ui-resizable-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.grid-stack .grid-stack-item > .ui-resizable-sw { bottom: 0; left: 0; cursor: nesw-resize; }
 
 /* Hide edge handles — we only want corner dots */
 .grid-stack .grid-stack-item > .ui-resizable-n,
@@ -1106,7 +1105,7 @@
 .grid-stack > .grid-stack-placeholder > .placeholder-content {
   border: 2px dashed var(--accent-primary);
   background: rgba(var(--accent-rgb), 0.05);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 /* The widget being actively resized shouldn't transition — snap instantly */
@@ -1119,7 +1118,7 @@
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   grid-auto-rows: 80px;
-  gap: 8px;
+  gap: 20px;
   animation: fadeIn var(--transition-normal) forwards;
   width: 100%;
   align-content: start;
@@ -1133,7 +1132,7 @@
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   grid-auto-rows: 80px;
-  gap: 8px;
+  gap: 20px;
   animation: fadeIn var(--transition-normal) forwards;
   width: 100%;
   padding: 4px;

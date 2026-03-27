@@ -1,7 +1,7 @@
 .dashboard-widget {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
-  border-radius: 6px;
+  border-radius: 10px;
   overflow: visible;
   display: flex;
   flex-direction: column;
@@ -9,16 +9,49 @@
   min-width: 100px;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
   position: relative;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-/* GridStack layout - widget IS the grid-stack-item */
+/* GridStack layout - widget IS the grid-stack-item.
+   GridStack positions cells via inline top/left/width/height.
+   We use padding to create visual gaps, and a ::before pseudo for the card. */
 .dashboard-widget.grid-stack-item {
-  border-radius: 6px;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 5px !important;
+  box-sizing: border-box !important;
+  overflow: visible;
+}
+
+.dashboard-widget.grid-stack-item::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-  overflow: hidden;
+  border-radius: 10px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.dashboard-widget.grid-stack-item > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-widget.grid-stack-item > .widget-border-actions,
+.dashboard-widget.grid-stack-item > .widget-edit-click-overlay,
+.dashboard-widget.grid-stack-item > .widget-expand-corner-btn,
+.dashboard-widget.grid-stack-item > .widget-loading-bar {
+  position: absolute;
+  z-index: 50;
 }
 
 .dashboard-widget.grid-layout-widget {
@@ -27,6 +60,11 @@
 
 /* Widget colors computed from canvas background */
 .dashboard-widget.has-canvas-color {
+  background: var(--widget-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.dashboard-widget.grid-stack-item.has-canvas-color::before {
   background: var(--widget-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
@@ -82,10 +120,13 @@
 
 /* Selected state - widget being edited inline */
 .dashboard-widget.selected {
+  z-index: 10;
+}
+
+.dashboard-widget.grid-stack-item.selected::before {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
   box-shadow: var(--shadow-card-active);
-  z-index: 10;
 }
 
 .dashboard-widget.selected .widget-header {
@@ -151,26 +192,29 @@
 
 /* Selection border when widget is in edit mode */
 .dashboard-widget.edit-mode-widget {
-  outline: 2px dashed transparent;
-  outline-offset: 2px;
-  transition: outline-color 0.15s ease, box-shadow 0.2s ease;
   cursor: pointer;
 }
 
-.dashboard-widget.edit-mode-widget:hover {
+.dashboard-widget.grid-stack-item.edit-mode-widget::before {
+  outline: 2px dashed transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.15s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-widget.grid-stack-item.edit-mode-widget:hover::before {
   outline-color: var(--accent-primary);
   box-shadow: 0 4px 20px rgba(var(--accent-rgb), 0.25);
 }
 
-.dashboard-widget.edit-mode-widget.panel-editing {
+.dashboard-widget.grid-stack-item.edit-mode-widget.panel-editing::before {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
   box-shadow: 0 4px 24px rgba(var(--accent-rgb), 0.35);
 }
 
-.dashboard-widget.edit-mode-widget.resizing,
-.dashboard-widget.edit-mode-widget.dragging,
-.ui-resizable-resizing .dashboard-widget.edit-mode-widget {
+.dashboard-widget.grid-stack-item.edit-mode-widget.resizing::before,
+.dashboard-widget.grid-stack-item.edit-mode-widget.dragging::before,
+.ui-resizable-resizing .dashboard-widget.grid-stack-item.edit-mode-widget::before {
   outline-color: var(--accent-primary);
   outline-style: solid;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -185,11 +229,11 @@
   cursor: pointer;
 }
 
-/* Widget border actions - floating top right, visible on hover */
+/* Widget border actions - floating top right of the card */
 .widget-border-actions {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 13px;
+  right: 13px;
   display: flex;
   gap: 4px;
   z-index: 50;
@@ -237,8 +281,8 @@
 /* Expand button in bottom right corner */
 .widget-expand-corner-btn {
   position: absolute;
-  bottom: 6px;
-  right: 6px;
+  bottom: 11px;
+  right: 11px;
   width: 24px;
   height: 24px;
   display: flex;
