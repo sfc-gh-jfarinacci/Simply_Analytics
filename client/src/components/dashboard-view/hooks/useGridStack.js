@@ -50,7 +50,7 @@ export function useGridStack({
     const grid = GridStack.init({
       column: 12,
       cellHeight: 80,
-      margin: 12,
+      margin: 0,
       float: true,
       animate: true,
       resizable: { handles: 'se,sw,ne,nw' },
