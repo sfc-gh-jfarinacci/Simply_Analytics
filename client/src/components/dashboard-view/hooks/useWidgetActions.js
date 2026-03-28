@@ -175,7 +175,7 @@ export function useWidgetActions({
   const handleAddSpecialWidget = useCallback(async (type) => {
     if (!currentDashboard) return;
     const sizes = {
-      title: { w: 12, h: 1, minW: 3, minH: 1 },
+      title: { w: 12, h: 1, minW: 2, minH: 1 },
       filter: { w: 4, h: 1, minW: 2, minH: 1 },
     };
     const s = sizes[type] || { w: 4, h: 3 };

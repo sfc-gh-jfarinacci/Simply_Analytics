@@ -74,7 +74,7 @@ export const CHART_FORMAT_OPTIONS = {
     // Data display
     table: { fontSize: true, numberFormat: true, showTotals: true },
     pivot: { fontSize: true, showTotals: true, heatmapColors: true, numberFormat: true },
-    metric: { fontSize: true, textColor: true, showLabels: true, animate: true, numberFormat: true, metricIcon: true, showSparkline: true, comparisonLabel: true },
+    metric: { fontSize: true, textColor: true, showLabels: true, animate: true, numberFormat: true, metricIcon: true, showSparkline: true, comparisonLabel: true, metricLayout: true },
   };
   
   // Legend position options

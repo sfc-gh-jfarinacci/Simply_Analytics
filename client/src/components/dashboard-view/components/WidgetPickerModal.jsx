@@ -47,7 +47,7 @@ export function WidgetPickerModal({
               <button
                 key={type}
                 className="widget-type-card"
-                onClick={() => { (type === 'title' || type === 'filter' ? onAddSpecialWidget(type) : onAddWidget(type)); setWidgetSearch(''); }}
+                onClick={() => { (type === 'title' ? onAddSpecialWidget(type) : onAddWidget(type)); setWidgetSearch(''); }}
               >
                 <div className="widget-type-icon"><Icon /></div>
                 <span>{label}</span>

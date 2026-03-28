@@ -4,7 +4,7 @@
  * Features: Animated transitions, accordion cards for sections
  */
 import React, { useState, useCallback } from 'react';
-import { FiDroplet, FiChevronDown, FiChevronRight, FiHash, FiType, FiLayout, FiSliders, FiGrid, FiAlignLeft, FiRotateCw } from 'react-icons/fi';
+import { FiDroplet, FiChevronDown, FiChevronRight, FiHash, FiType, FiLayout, FiSliders, FiGrid, FiAlignLeft, FiRotateCw, FiMove } from 'react-icons/fi';
 import ColorSchemeDropdown from './ColorSchemeDropdown';
 import { COLOR_PRESETS, NUMBER_FORMATS, CHART_FORMAT_OPTIONS, LEGEND_POSITIONS } from '../constants';
 
@@ -95,6 +95,7 @@ const FormattingSection = ({
     labels: false,
     legend: false,
     display: false,
+    layout: false,
   });
   
   // Toggle chart section accordion
@@ -419,6 +420,54 @@ const FormattingSection = ({
                           <span>Show Totals</span>
                         </label>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Metric Layout Card */}
+              {formatOptions.metricLayout && (
+                <div className={`format-card ${expandedChartSections.layout ? 'expanded' : ''}`}>
+                  <div className="format-card-header" onClick={() => toggleChartSection('layout')}>
+                    <FiMove size={14} className="format-card-icon" />
+                    <span className="format-card-title">Metric Layout</span>
+                    <FiChevronRight className={`format-card-chevron ${expandedChartSections.layout ? 'rotated' : ''}`} size={14} />
+                  </div>
+                  <div className={`format-card-content ${expandedChartSections.layout ? 'show' : ''}`}>
+                    <div className="format-card-body">
+                      <div className="format-option-row">
+                        <label className="format-option-label">Horizontal Align</label>
+                        <div className="format-btn-group">
+                          {[{ v: 'left', l: 'Left' }, { v: 'center', l: 'Center' }, { v: 'right', l: 'Right' }].map(o => (
+                            <button key={o.v}
+                              className={`format-btn-option ${(customConfig.metricAlign || 'left') === o.v ? 'active' : ''}`}
+                              onClick={() => setCustomConfig(prev => ({ ...prev, metricAlign: o.v }))}
+                            >{o.l}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="format-option-row">
+                        <label className="format-option-label">Vertical Align</label>
+                        <div className="format-btn-group">
+                          {[{ v: 'top', l: 'Top' }, { v: 'center', l: 'Center' }, { v: 'bottom', l: 'Bottom' }].map(o => (
+                            <button key={o.v}
+                              className={`format-btn-option ${(customConfig.metricVerticalAlign || 'center') === o.v ? 'active' : ''}`}
+                              onClick={() => setCustomConfig(prev => ({ ...prev, metricVerticalAlign: o.v }))}
+                            >{o.l}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="format-option-row">
+                        <label className="format-option-label">Padding</label>
+                        <div className="format-slider-row">
+                          <input type="range" min="0" max="40" step="2"
+                            value={customConfig.metricPadding ?? 12}
+                            onChange={e => setCustomConfig(prev => ({ ...prev, metricPadding: parseInt(e.target.value) }))}
+                            className="format-range-slider"
+                          />
+                          <span className="format-slider-value">{customConfig.metricPadding ?? 12}px</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

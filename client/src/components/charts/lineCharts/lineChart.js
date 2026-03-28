@@ -24,46 +24,47 @@ import * as d3 from 'd3';
 // ============================================================================
 
 const DEFAULT_COLORS = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-  '#f43f5e', '#ef4444', '#f97316', '#f59e0b', '#eab308',
-  '#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4',
-  '#0ea5e9', '#3b82f6', '#6366f1'
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc'
 ];
 
 const STYLES = {
   axis: {
-    textColor: '#a0a0b0',
-    lineColor: 'rgba(100, 100, 120, 0.3)',
+    textColor: '#94a3b8',
+    lineColor: 'rgba(148, 163, 184, 0.2)',
     fontSize: '11px',
     smallFontSize: '9px',
   },
   grid: {
-    lineColor: 'rgba(100, 100, 120, 0.15)',
-    dashArray: '3,3',
+    lineColor: 'rgba(148, 163, 184, 0.12)',
   },
   tooltip: {
-    background: 'rgba(30, 30, 40, 0.95)',
-    border: '1px solid rgba(100, 100, 120, 0.3)',
-    borderRadius: '6px',
+    background: 'rgba(15, 23, 42, 0.92)',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '8px',
     padding: '10px 14px',
     fontSize: '12px',
-    color: '#e0e0e0',
-    shadow: '0 4px 12px rgba(0,0,0,0.3)',
+    color: '#e2e8f0',
+    shadow: '0 4px 16px rgba(0,0,0,0.2)',
   },
   line: {
     strokeWidth: 2,
-    hoverStrokeWidth: 3,
-    dimmedOpacity: 0.15,
-    dotRadius: 3.5,
+    hoverStrokeWidth: 2.5,
+    dimmedOpacity: 0.12,
+    dotRadius: 4,
     dotHoverRadius: 5,
-    activeDotRadius: 4,
+    activeDotRadius: 5,
   },
   area: {
     fillOpacity: 0.2,
     stackedFillOpacity: 0.5,
+    gradientTopOpacity: 0.35,
+    gradientBottomOpacity: 0.02,
   },
   label: {
-    color: '#a0a0b0',
+    color: '#94a3b8',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
 };
@@ -384,7 +385,7 @@ export const createLineChart = (container, config, data, options = {}) => {
     return { update: () => {}, destroy: () => {} };
   }
 
-  const {
+  let {
     showLegend = true,
     legendPosition = 'right',
     xAxisTitle = '',
@@ -406,7 +407,31 @@ export const createLineChart = (container, config, data, options = {}) => {
   const formatValue = createValueFormatter(fieldFormats);
   const getDisplayName = createDisplayNameGetter(columnAliases);
 
-  // Margins
+  const containerRect = container.getBoundingClientRect();
+  const totalW = options.width || containerRect.width || 400;
+  const totalH = options.height || containerRect.height || 300;
+
+  const isCompact = totalW < 250 || totalH < 180;
+  const isTiny = totalW < 160 || totalH < 120;
+
+  if (isTiny) {
+    showLegend = false;
+    xAxisTitle = '';
+    yAxisTitle = '';
+    showLabels = false;
+    showGrid = false;
+    baseMargin = {
+      top: Math.min(baseMargin.top, 8),
+      right: Math.min(baseMargin.right, 8),
+      bottom: Math.min(baseMargin.bottom, 24),
+      left: Math.min(baseMargin.left, Math.max(30, Math.round(totalW * 0.15))),
+    };
+  } else if (isCompact) {
+    showLegend = false;
+    xAxisTitle = '';
+    yAxisTitle = '';
+  }
+
   const legendWidth = 90;
   const legendHeight = 26;
   const isVerticalLegend = showLegend && (legendPosition === 'left' || legendPosition === 'right');
@@ -419,9 +444,8 @@ export const createLineChart = (container, config, data, options = {}) => {
     left: Math.max(5, baseMargin.left + (isVerticalLegend && legendPosition === 'left' ? legendWidth : 0) + (yAxisTitle ? 20 : 0)),
   };
 
-  const containerRect = container.getBoundingClientRect();
-  const width = (options.width || containerRect.width || 400) - margin.left - margin.right;
-  const height = (options.height || containerRect.height || 300) - margin.top - margin.bottom;
+  const width = totalW - margin.left - margin.right;
+  const height = totalH - margin.top - margin.bottom;
 
   const processedData = processData(data, config);
   const xField = config.x_axis;
@@ -577,13 +601,15 @@ export const createLineChart = (container, config, data, options = {}) => {
   let currentXScale = xScale.copy();
   let currentYScale = yScale.copy();
 
+  const yTickCount = Math.max(2, Math.min(5, Math.floor(height / 40)));
+
   const renderGrid = (ys) => {
     gridGroup.selectAll('*').remove();
     if (!showGrid) return;
-    gridGroup.selectAll('.grid-line').data(ys.ticks(5)).enter().append('line')
+    gridGroup.selectAll('.grid-line').data(ys.ticks(yTickCount)).enter().append('line')
       .attr('x1', 0).attr('x2', width)
       .attr('y1', d => ys(d)).attr('y2', d => ys(d))
-      .style('stroke', STYLES.grid.lineColor).style('stroke-dasharray', STYLES.grid.dashArray);
+      .style('stroke', STYLES.grid.lineColor);
   };
   renderGrid(yScale);
 
@@ -636,8 +662,9 @@ export const createLineChart = (container, config, data, options = {}) => {
         const gradId = `area-grad-${clipId}-${i}`;
         const grad = defs.append('linearGradient').attr('id', gradId)
           .attr('x1', '0%').attr('y1', '0%').attr('x2', '0%').attr('y2', '100%');
-        grad.append('stop').attr('offset', '0%').attr('stop-color', colorScale(s.key)).attr('stop-opacity', 0.3);
-        grad.append('stop').attr('offset', '100%').attr('stop-color', colorScale(s.key)).attr('stop-opacity', 0.02);
+        grad.append('stop').attr('offset', '0%').attr('stop-color', colorScale(s.key)).attr('stop-opacity', STYLES.area.gradientTopOpacity);
+        grad.append('stop').attr('offset', '70%').attr('stop-color', colorScale(s.key)).attr('stop-opacity', 0.08);
+        grad.append('stop').attr('offset', '100%').attr('stop-color', colorScale(s.key)).attr('stop-opacity', STYLES.area.gradientBottomOpacity);
         chartArea.append('path').datum(s.values)
           .attr('class', 'area-path').attr('data-series', s.key)
           .attr('d', areaGen).attr('fill', `url(#${gradId})`);
@@ -681,7 +708,7 @@ export const createLineChart = (container, config, data, options = {}) => {
         .selectAll('.dot').data(series.values).enter().append('circle').attr('class', 'dot')
         .attr('cx', d => isDate ? xScale(d.x) : xScale(String(d.x)))
         .attr('cy', d => yScale(d.y)).attr('r', STYLES.line.dotRadius)
-        .attr('fill', colorScale(series.key)).attr('stroke', STYLES.tooltip.background).attr('stroke-width', 1.5);
+        .attr('fill', '#fff').attr('stroke', colorScale(series.key)).attr('stroke-width', 2);
     });
   }
 
@@ -691,8 +718,8 @@ export const createLineChart = (container, config, data, options = {}) => {
 
   const crosshairLine = chartArea.append('line').attr('class', 'crosshair')
     .attr('y1', 0).attr('y2', height)
-    .style('stroke', 'rgba(160, 160, 176, 0.4)').style('stroke-width', 1)
-    .style('stroke-dasharray', '4,3').style('visibility', 'hidden');
+    .style('stroke', 'rgba(148, 163, 184, 0.3)').style('stroke-width', 1)
+    .style('visibility', 'hidden');
 
   const hoverDotsGroup = chartArea.append('g').attr('class', 'hover-dots');
 
@@ -738,10 +765,10 @@ export const createLineChart = (container, config, data, options = {}) => {
 
       hoverDotsGroup.append('circle')
         .attr('cx', xPos).attr('cy', ys(pt.y))
-        .attr('r', isFocused ? STYLES.line.activeDotRadius : 2.5)
-        .attr('fill', colorScale(series.key))
-        .attr('stroke', isFocused ? '#fff' : 'none')
-        .attr('stroke-width', isFocused ? 2 : 0)
+        .attr('r', isFocused ? STYLES.line.activeDotRadius : 3)
+        .attr('fill', '#fff')
+        .attr('stroke', colorScale(series.key))
+        .attr('stroke-width', isFocused ? 2.5 : 1.5)
         .style('opacity', isFocused ? 1 : 0.3);
 
       if (isFocused) {
@@ -831,7 +858,8 @@ export const createLineChart = (container, config, data, options = {}) => {
         .text(d => truncateLabel(d, 14));
     }
     xAxisGroup.selectAll('text').style('fill', STYLES.axis.textColor).style('font-size', STYLES.axis.fontSize);
-    xAxisGroup.selectAll('.domain, .tick line').style('stroke', STYLES.axis.lineColor);
+    xAxisGroup.selectAll('.domain').style('stroke', 'none');
+    xAxisGroup.selectAll('.tick line').style('stroke', STYLES.axis.lineColor);
   };
 
   const smartFmt = (v) => {
@@ -845,14 +873,16 @@ export const createLineChart = (container, config, data, options = {}) => {
   };
 
   const renderYAxis = (ys) => {
-    yAxisGroup.call(d3.axisLeft(ys).ticks(5).tickFormat(smartFmt))
+    yAxisGroup.call(d3.axisLeft(ys).ticks(yTickCount).tickFormat(smartFmt))
       .selectAll('text').style('fill', STYLES.axis.textColor).style('font-size', STYLES.axis.fontSize);
-    yAxisGroup.selectAll('.domain, .tick line').style('stroke', STYLES.axis.lineColor);
+    yAxisGroup.selectAll('.domain').style('stroke', 'none');
+    yAxisGroup.selectAll('.tick line').style('stroke', STYLES.axis.lineColor);
   };
 
   renderXAxis(xScale);
   renderYAxis(yScale);
-  g.selectAll('.domain, .tick line').style('stroke', STYLES.axis.lineColor);
+  g.selectAll('.domain').style('stroke', 'none');
+  g.selectAll('.tick line').style('stroke', STYLES.axis.lineColor);
 
   // Axis titles
   g.selectAll('.axis-title').remove();

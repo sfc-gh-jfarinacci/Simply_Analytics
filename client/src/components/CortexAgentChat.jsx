@@ -5,23 +5,20 @@ import { BsStars } from 'react-icons/bs';
 import { sfConnectionApi } from '../api/apiClient';
 import '../styles/CortexAgentChat.css';
 
-function ThinkingBlock({ thinking, currentStatus, isActive, onExited }) {
-  const [visible, setVisible] = useState(true);
+function ThinkingBlock({ thinking, currentStatus, isActive }) {
   const [fadingOut, setFadingOut] = useState(false);
+  const [gone, setGone] = useState(false);
   const contentRef = useRef(null);
-  const wasActive = useRef(isActive);
+  const prevActive = useRef(isActive);
 
   useEffect(() => {
-    if (wasActive.current && !isActive) {
+    if (prevActive.current && !isActive && !fadingOut) {
       setFadingOut(true);
-      const timer = setTimeout(() => {
-        setVisible(false);
-        onExited?.();
-      }, 350);
+      const timer = setTimeout(() => setGone(true), 350);
       return () => clearTimeout(timer);
     }
-    wasActive.current = isActive;
-  }, [isActive, onExited]);
+    prevActive.current = isActive;
+  }, [isActive, fadingOut]);
 
   useEffect(() => {
     if (isActive && contentRef.current) {
@@ -29,7 +26,7 @@ function ThinkingBlock({ thinking, currentStatus, isActive, onExited }) {
     }
   }, [thinking, isActive]);
 
-  if (!visible || (!currentStatus && !thinking)) return null;
+  if (gone) return null;
 
   return (
     <div className={`cortex-thinking-block cortex-thinking-active ${fadingOut ? 'cortex-thinking-fadeout' : ''}`}>
@@ -39,7 +36,7 @@ function ThinkingBlock({ thinking, currentStatus, isActive, onExited }) {
           {currentStatus || 'Processing...'}
         </span>
       </div>
-      {thinking && (
+      {thinking && !fadingOut && (
         <div className="cortex-thinking-content" ref={contentRef}>
           <div className="cortex-thinking-text">
             {thinking}
@@ -415,7 +412,7 @@ const CortexAgentChat = ({ connectionId, cortexAgents = [], role, onClose, tempF
 
     return (
       <div>
-        {hasThinkingContent && (
+        {hasThinkingContent && phase !== 'done' && (
           <ThinkingBlock
             thinking={thinking}
             currentStatus={currentStatus}
@@ -517,7 +514,7 @@ const CortexAgentChat = ({ connectionId, cortexAgents = [], role, onClose, tempF
 
       {/* Input area with agent chips */}
       <div className="cortex-chat-input-area">
-        <div className="cortex-input-wrapper">
+        <div className={`cortex-input-wrapper ${isStreaming ? 'cortex-input-streaming' : ''}`}>
           <textarea
             ref={inputRef}
             className="cortex-chat-input"

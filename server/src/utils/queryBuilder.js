@@ -205,6 +205,10 @@ const formatSqlValue = (value) => {
 const buildFilterCondition = (f, fieldName) => {
   const field = `"${fieldName}"`;
   const op = sanitizeOperator(f.operator);
+
+  // Normalize: allow values array as fallback for value/value2
+  const val = f.value !== undefined ? f.value : f.values?.[0];
+  const val2 = f.value2 !== undefined ? f.value2 : f.values?.[1];
   
   if (op === 'CUSTOM' && f.customExpression) {
     return f.customExpression
@@ -221,17 +225,21 @@ const buildFilterCondition = (f, fieldName) => {
     return `${field} ${op}`;
   }
   
-  if (op === 'BETWEEN' && f.value !== undefined && f.value2 !== undefined) {
-    return `${field} BETWEEN ${formatSqlValue(f.value)} AND ${formatSqlValue(f.value2)}`;
+  if (op === 'BETWEEN' && val !== undefined && val2 !== undefined) {
+    return `${field} BETWEEN ${formatSqlValue(val)} AND ${formatSqlValue(val2)}`;
   }
   
-  if (op === 'LIKE' && f.value !== undefined) {
-    const escapedValue = String(f.value).replace(/'/g, "''");
+  if (op === 'LIKE' && val !== undefined) {
+    const escapedValue = String(val).replace(/'/g, "''");
     return `${field} ILIKE '%${escapedValue}%'`;
   }
+
+  if (op === '=' && val !== undefined) {
+    return `${field} = ${formatSqlValue(val)}`;
+  }
   
-  if (f.value !== undefined) {
-    return `${field} ${op} ${formatSqlValue(f.value)}`;
+  if (val !== undefined) {
+    return `${field} ${op} ${formatSqlValue(val)}`;
   }
   
   if (f.values?.length > 0) {
@@ -1009,49 +1017,9 @@ const buildQuery = (config, semanticViewFQN, options = {}) => {
 
   // Add WHERE clause
   if (config.filters?.length > 0) {
-    const calcFieldMapForWhere = new Map(usedCustomColumns.map(cc => [cc.name?.toUpperCase(), cc.expression]));
-    
     const whereParts = config.filters
       .filter(f => f && f.field)
-      .map(f => {
-        const fieldUpper = f.field?.toUpperCase();
-        const calcExpr = calcFieldMapForWhere.get(fieldUpper);
-        const field = calcExpr 
-          ? calcExpr.replace(/\[([^\]]+)\]/g, '"$1"')
-          : `"${f.field}"`;
-        
-        const op = sanitizeOperator(f.operator);
-        
-        if (op === 'CUSTOM' && f.customExpression) {
-          return f.customExpression
-            .replace(/\[\[([^\]]+)\]\]/g, '"$1"')
-            .replace(/\{\{([^}]+)\}\}/g, '"$1"');
-        }
-        
-        if ((op === 'IN' || op === 'NOT IN') && Array.isArray(f.values) && f.values.length > 0) {
-          const escapedValues = f.values.map(v => formatSqlValue(v));
-          return `${field} ${op} (${escapedValues.join(', ')})`;
-        }
-        
-        if (op === 'IS NULL' || op === 'IS NOT NULL' || op === 'IS TRUE' || op === 'IS FALSE') {
-          return `${field} ${op}`;
-        }
-        
-        if (op === 'BETWEEN' && f.value !== undefined && f.value2 !== undefined) {
-          return `${field} BETWEEN ${formatSqlValue(f.value)} AND ${formatSqlValue(f.value2)}`;
-        }
-        
-        if (f.value !== undefined) {
-          return `${field} ${op} ${formatSqlValue(f.value)}`;
-        }
-        
-        if (f.values?.length > 0) {
-          const escapedValues = f.values.map(v => formatSqlValue(v));
-          return `${field} IN (${escapedValues.join(', ')})`;
-        }
-        
-        return null;
-      })
+      .map(f => buildFilterCondition(f, f.field))
       .filter(Boolean);
     
     if (whereParts.length > 0) {
@@ -1272,49 +1240,9 @@ const buildSqlPreview = (config, semanticViewFQN, options = {}) => {
 
   // Add WHERE clause if filters exist
   if (config.filters?.length > 0) {
-    const calcFieldMapForWhere = new Map(usedCustomColumns.map(cc => [cc.name?.toUpperCase(), cc.expression]));
-    
     const whereParts = config.filters
       .filter(f => f && f.field)
-      .map(f => {
-        const fieldUpper = f.field?.toUpperCase();
-        const calcExpr = calcFieldMapForWhere.get(fieldUpper);
-        const field = calcExpr 
-          ? calcExpr.replace(/\[([^\]]+)\]/g, '"$1"')
-          : `"${f.field}"`;
-        
-        const op = sanitizeOperator(f.operator);
-        
-        if (op === 'CUSTOM' && f.customExpression) {
-          return f.customExpression
-            .replace(/\[\[([^\]]+)\]\]/g, '"$1"')
-            .replace(/\{\{([^}]+)\}\}/g, '"$1"');
-        }
-        
-        if ((op === 'IN' || op === 'NOT IN') && Array.isArray(f.values) && f.values.length > 0) {
-          const escapedValues = f.values.map(v => formatSqlValue(v));
-          return `${field} ${op} (${escapedValues.join(', ')})`;
-        }
-        
-        if (op === 'IS NULL' || op === 'IS NOT NULL' || op === 'IS TRUE' || op === 'IS FALSE') {
-          return `${field} ${op}`;
-        }
-        
-        if (op === 'BETWEEN' && f.value !== undefined && f.value2 !== undefined) {
-          return `${field} BETWEEN ${formatSqlValue(f.value)} AND ${formatSqlValue(f.value2)}`;
-        }
-        
-        if (f.value !== undefined) {
-          return `${field} ${op} ${formatSqlValue(f.value)}`;
-        }
-        
-        if (f.values?.length > 0) {
-          const escapedValues = f.values.map(v => formatSqlValue(v));
-          return `${field} IN (${escapedValues.join(', ')})`;
-        }
-        
-        return null;
-      })
+      .map(f => buildFilterCondition(f, f.field))
       .filter(Boolean);
     
     if (whereParts.length > 0) {

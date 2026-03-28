@@ -358,7 +358,7 @@ const DashboardWidget = ({
     'data-widget-id': widget.id,
     'gs-x': gridPosition.x, 'gs-y': gridPosition.y,
     'gs-w': gridPosition.w, 'gs-h': gridPosition.h,
-    'gs-min-w': gridPosition.minW || 2, 'gs-min-h': gridPosition.minH || 2,
+    'gs-min-w': gridPosition.minW || 1, 'gs-min-h': gridPosition.minH || 1,
   } : {};
 
   // ── Editing mode: show embedded WidgetEditor ──
@@ -381,7 +381,7 @@ const DashboardWidget = ({
     <div
       ref={combinedRef}
       style={{ ...gridLayoutStyle, ...colorStyle }}
-      className={`dashboard-widget ${isGridLayout ? 'grid-stack-item' : ''} ${isDragging ? 'dragging' : ''} ${isResizing ? 'resizing' : ''} ${canvasColor ? 'has-canvas-color' : ''} ${isGridLayout ? 'grid-layout-widget' : ''} ${isEditMode ? 'edit-mode-widget' : ''} ${isSelected ? 'panel-editing' : ''} ${loading ? 'is-loading' : ''} title-pos-${widget.config?.titlePosition || 'top-left'} ${widget.config?.showTitle === false ? 'title-hidden' : ''} ${effectiveWidgetType === 'title' ? 'widget-type-title' : ''} ${effectiveWidgetType === 'filter' ? 'widget-type-filter' : ''}`}
+      className={`dashboard-widget ${isGridLayout ? 'grid-stack-item' : ''} ${isDragging ? 'dragging' : ''} ${isResizing ? 'resizing' : ''} ${canvasColor ? 'has-canvas-color' : ''} ${isGridLayout ? 'grid-layout-widget' : ''} ${isEditMode ? 'edit-mode-widget' : ''} ${isSelected ? 'panel-editing' : ''} ${loading ? 'is-loading' : ''} title-pos-${widget.config?.titlePosition || 'top-left'} ${widget.config?.showTitle === false ? 'title-hidden' : ''} ${effectiveWidgetType === 'title' ? 'widget-type-title' : ''} ${effectiveWidgetType === 'filter' ? 'widget-type-filter' : ''} ${effectiveWidgetType === 'metric' ? 'widget-type-metric' : ''}`}
       onClick={handleWidgetClick}
       {...gridStackAttrs}
     >

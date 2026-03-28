@@ -231,7 +231,12 @@ export const DEFAULT_COLOR_SCHEME = 'tableau10';
 /**
  * Legacy fallback colors (for backwards compatibility)
  */
-export const DEFAULT_COLORS = d3.schemeTableau10;
+export const DEFAULT_COLORS = [
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc',
+];
 
 /**
  * Create a color scale for a given number of data points
@@ -400,16 +405,15 @@ export const LABEL_STYLES = {
  * Grid line styling
  */
 export const GRID_STYLES = {
-  stroke: 'rgba(128,128,128,0.25)',
-  strokeDasharray: '3,3',
+  stroke: 'rgba(148, 163, 184, 0.1)',
 };
 
 /**
  * Axis styling
  */
 export const AXIS_STYLES = {
-  domainStroke: '#2a2a3a',
-  tickStroke: '#2a2a3a',
+  domainStroke: 'rgba(148, 163, 184, 0.15)',
+  tickStroke: 'rgba(148, 163, 184, 0.15)',
 };
 
 /**

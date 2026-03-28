@@ -24,7 +24,6 @@ import {
   FiThermometer,
   FiCompass,
   FiType,
-  FiSliders,
 } from 'react-icons/fi';
 import { TbChartHistogram } from 'react-icons/tb';
 
@@ -108,7 +107,6 @@ export const CHART_CATEGORIES = [
     icon: FiType,
     types: [
       { type: 'title', icon: FiType, label: 'Title / Header' },
-      { type: 'filter', icon: FiSliders, label: 'Filter Control' },
     ]
   },
 ];

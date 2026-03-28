@@ -34,6 +34,9 @@ const MetricCard = ({ data, config, query }) => {
   const numberFormat = config?.numberFormat || 'auto';
   const decimalPlaces = config?.decimalPlaces ?? 1;
   const columnAliases = config?.columnAliases || {};
+  const metricAlign = config?.metricAlign || 'left';
+  const metricVerticalAlign = config?.metricVerticalAlign || 'center';
+  const metricPadding = config?.metricPadding ?? 12;
   const comparisonLabel = config?.comparisonLabel || (comparisonMeasureField
     ? (columnAliases[comparisonMeasureField] || comparisonMeasureField?.replace(/_/g, ' '))
     : 'Prior Period');
@@ -268,45 +271,51 @@ const MetricCard = ({ data, config, query }) => {
 
   }, [sparkData, showSparkline, trendDirection, animate]);
 
-  const trendArrow = trendDirection === 'up' ? '↑' : trendDirection === 'down' ? '↓' : '';
+  const alignMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
+  const vAlignMap = { top: 'flex-start', center: 'center', bottom: 'flex-end' };
+  const textAlignMap = { left: 'left', center: 'center', right: 'right' };
 
   return (
-    <div className="kpi-card">
-      {/* Header: icon + trend badge */}
-      <div className="kpi-card-header">
-        {metricIcon ? (
-          <div className="kpi-icon" style={{ background: 'var(--bg-tertiary)' }}>
-            {metricIcon}
-          </div>
-        ) : <div />}
+    <div
+      className={`kpi-card kpi-align-${metricAlign}`}
+      style={{
+        padding: `${metricPadding}px`,
+        justifyContent: vAlignMap[metricVerticalAlign],
+      }}
+    >
+      {/* Label above the number */}
+      {showLabels && label && (
+        <div className="kpi-label" style={{ textAlign: textAlignMap[metricAlign] }}>{label}</div>
+      )}
 
-        {changePercent !== null && (
-          <div className={`kpi-trend-badge trend-${trendDirection}`}>
-            {trendArrow && <span className="trend-arrow">{trendArrow}</span>}
-            <span className="trend-value">{Math.abs(changePercent).toFixed(1)}%</span>
-          </div>
-        )}
-      </div>
-
-      {/* Main value */}
-      <div className="kpi-main-value">
+      {/* Value row: prefix + number + suffix + trend badge — all inline */}
+      <div className="kpi-value-row" style={{ justifyContent: alignMap[metricAlign] }}>
         <div className="kpi-value-text">
           {displayPrefix && <span className="kpi-prefix">{displayPrefix}</span>}
           <span className="kpi-number">{displayNumber}</span>
           {displaySuffix && <span className="kpi-suffix">{displaySuffix}</span>}
         </div>
 
-        {priorValue !== null && (
-          <div className="kpi-comparison">
-            <span className="kpi-comparison-label">{comparisonLabel}</span>
-            <span className="kpi-comparison-value">{formatNumber(priorValue)}</span>
-          </div>
+        {changePercent !== null && (
+          <span className={`kpi-trend-inline trend-${trendDirection}`}>
+            <svg className="kpi-trend-arrow" viewBox="0 0 12 12" fill="none">
+              {trendDirection === 'up' ? (
+                <path d="M2 8L6 4L10 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              ) : trendDirection === 'down' ? (
+                <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              ) : null}
+            </svg>
+            {Math.abs(changePercent).toFixed(1)}%
+          </span>
         )}
       </div>
 
-      {/* Label */}
-      {showLabels && label && (
-        <div className="kpi-label">{label}</div>
+      {/* Prior period comparison */}
+      {priorValue !== null && (
+        <div className="kpi-comparison" style={{ textAlign: textAlignMap[metricAlign] }}>
+          <span className="kpi-comparison-label">{comparisonLabel}: </span>
+          <span className="kpi-comparison-value">{formatNumber(priorValue)}</span>
+        </div>
       )}
 
       {/* Sparkline */}

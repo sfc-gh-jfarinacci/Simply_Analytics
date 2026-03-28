@@ -5,7 +5,21 @@ export function createHistogramChart(container, data, {
   colorScheme = 'blues', colors, animate = true,
   formatValue: fmtFn, showCurve = false,
 }) {
-  const margin = { top: 20, right: 20, bottom: 44, left: 56 };
+  const isCompact = width < 250 || height < 180;
+  const isTiny = width < 160 || height < 120;
+  let margin = { top: 20, right: 20, bottom: 44, left: 56 };
+  if (isTiny) {
+    margin = { top: 4, right: 4, bottom: 18, left: 22 };
+  } else if (isCompact) {
+    margin = {
+      top: Math.min(margin.top, 10),
+      right: Math.min(margin.right, 10),
+      bottom: Math.min(margin.bottom, 28),
+      left: Math.min(margin.left, 36),
+    };
+  }
+  const hideAxisTitles = isCompact || isTiny;
+  const hideAxisTicks = isTiny;
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
   if (innerW <= 0 || innerH <= 0 || !data.length) return;
@@ -94,20 +108,22 @@ export function createHistogramChart(container, data, {
 
   const xAxisG = g.selectAll('g.x-axis').data([null]).join('g')
     .attr('class', 'x-axis').attr('transform', `translate(0,${innerH})`);
-  xAxisG.call(d3.axisBottom(x).ticks(Math.min(binCount, 10)).tickFormat(d3.format(',.0f')))
+  xAxisG.call(d3.axisBottom(x).ticks(Math.min(binCount, 10)).tickFormat(hideAxisTicks ? () => '' : d3.format(',.0f')))
     .selectAll('text').attr('fill', '#888');
   xAxisG.selectAll('.domain, .tick line').attr('stroke', '#444');
 
-  xAxisG.selectAll('text.x-label').data([null]).join('text')
+  xAxisG.selectAll('text.x-label').data(hideAxisTitles ? [] : [null]).join('text')
     .attr('class', 'x-label').attr('x', innerW / 2).attr('y', 36)
     .attr('text-anchor', 'middle').attr('fill', '#888').attr('font-size', 11)
     .text(valueField);
 
   const yAxisG = g.selectAll('g.y-axis').data([null]).join('g').attr('class', 'y-axis');
-  yAxisG.call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('fill', '#888');
+  const yAxis = d3.axisLeft(y).ticks(5);
+  if (hideAxisTicks) yAxis.tickFormat(() => '');
+  yAxisG.call(yAxis).selectAll('text').attr('fill', '#888');
   yAxisG.selectAll('.domain, .tick line').attr('stroke', '#444');
 
-  yAxisG.selectAll('text.y-label').data([null]).join('text')
+  yAxisG.selectAll('text.y-label').data(hideAxisTitles ? [] : [null]).join('text')
     .attr('class', 'y-label').attr('transform', 'rotate(-90)')
     .attr('x', -innerH / 2).attr('y', -40)
     .attr('text-anchor', 'middle').attr('fill', '#888').attr('font-size', 11)

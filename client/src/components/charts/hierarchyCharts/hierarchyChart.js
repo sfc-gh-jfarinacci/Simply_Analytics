@@ -21,21 +21,21 @@ import * as d3 from 'd3';
 // ============================================================================
 
 const DEFAULT_COLORS = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-  '#f43f5e', '#ef4444', '#f97316', '#f59e0b', '#eab308',
-  '#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4',
-  '#0ea5e9', '#3b82f6', '#6366f1'
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc',
 ];
 
 const STYLES = {
   tooltip: {
-    background: 'rgba(30, 30, 40, 0.95)',
-    border: '1px solid rgba(100, 100, 120, 0.3)',
-    borderRadius: '6px',
+    background: 'rgba(15, 23, 42, 0.92)',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '8px',
     padding: '10px 14px',
     fontSize: '12px',
-    color: '#e0e0e0',
-    shadow: '0 4px 12px rgba(0,0,0,0.3)',
+    color: '#e2e8f0',
+    shadow: '0 4px 16px rgba(0,0,0,0.2)',
   },
   cell: {
     dimmedOpacity: 0.25,

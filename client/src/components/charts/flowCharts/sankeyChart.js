@@ -20,21 +20,21 @@ import { sankey as d3Sankey, sankeyLinkHorizontal, sankeyLeft } from 'd3-sankey'
 
 const STYLES = {
   tooltip: {
-    background: 'rgba(30, 30, 40, 0.95)',
-    border: '1px solid rgba(100, 100, 120, 0.3)',
-    borderRadius: '6px',
+    background: 'rgba(15, 23, 42, 0.92)',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '8px',
     padding: '10px 14px',
     fontSize: '12px',
-    color: '#e0e0e0',
-    shadow: '0 4px 12px rgba(0,0,0,0.3)',
+    color: '#e2e8f0',
+    shadow: '0 4px 16px rgba(0,0,0,0.2)',
   },
 };
 
 const DEFAULT_COLORS = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-  '#f43f5e', '#ef4444', '#f97316', '#f59e0b', '#eab308',
-  '#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4',
-  '#0ea5e9', '#3b82f6',
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc',
 ];
 
 const createTooltip = () => {
@@ -92,7 +92,14 @@ export const createSankeyChart = (container, config, data, options = {}) => {
   const containerRect = container.getBoundingClientRect();
   const totalW = options.width || containerRect.width || 400;
   const totalH = options.height || containerRect.height || 300;
-  const margin = { top: 10, right: 100, bottom: 10, left: 100 };
+  let margin;
+  if (totalW < 160) {
+    margin = { top: 2, right: 20, bottom: 2, left: 20 };
+  } else if (totalW < 250) {
+    margin = { top: 5, right: 40, bottom: 5, left: 40 };
+  } else {
+    margin = { top: 10, right: 100, bottom: 10, left: 100 };
+  }
   const width = totalW - margin.left - margin.right;
   const height = totalH - margin.top - margin.bottom;
 
@@ -157,7 +164,7 @@ export const createSankeyChart = (container, config, data, options = {}) => {
   const getNodeColor = (d) => colorScale(d.name);
   const getLinkColor = (d) => {
     const c = d3.color(colorScale(d.source.name));
-    c.opacity = 0.55;
+    c.opacity = 0.3;
     return c.toString();
   };
 
@@ -176,14 +183,27 @@ export const createSankeyChart = (container, config, data, options = {}) => {
   const chartG = svg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
+  // Link gradients
+  const defs = svg.append('defs');
+  sLinks.forEach((d, i) => {
+    const grad = defs.append('linearGradient')
+      .attr('id', `link-grad-${i}`)
+      .attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', d.source.x1).attr('x2', d.target.x0);
+    grad.append('stop').attr('offset', '0%')
+      .attr('stop-color', colorScale(d.source.name)).attr('stop-opacity', 0.35);
+    grad.append('stop').attr('offset', '100%')
+      .attr('stop-color', colorScale(d.target.name || d.source.name)).attr('stop-opacity', 0.15);
+  });
+
   // Links
-  const linkG = chartG.append('g').attr('fill', 'none');
+  const linkG = chartG.append('g').attr('fill', 'none').attr('stroke-linecap', 'round');
 
   const linkPaths = linkG.selectAll('path')
     .data(sLinks)
     .join('path')
     .attr('d', sankeyLinkHorizontal())
-    .attr('stroke', d => getLinkColor(d))
+    .attr('stroke', (d, i) => `url(#link-grad-${i})`)
     .attr('stroke-width', d => Math.max(2, d.width));
 
   if (animate) {
@@ -210,7 +230,7 @@ export const createSankeyChart = (container, config, data, options = {}) => {
     .attr('width', d => d.x1 - d.x0)
     .attr('height', d => Math.max(1, d.y1 - d.y0))
     .attr('fill', d => getNodeColor(d))
-    .attr('rx', 2)
+    .attr('rx', 4)
     .style('cursor', 'default');
 
   if (animate) {
@@ -229,9 +249,8 @@ export const createSankeyChart = (container, config, data, options = {}) => {
       .attr('dy', '0.35em')
       .attr('text-anchor', d => d.x0 < width / 2 ? 'start' : 'end')
       .style('font-size', '11px')
-      .style('font-weight', '600')
-      .style('fill', 'rgba(220, 220, 230, 0.9)')
-      .style('text-shadow', '0 1px 2px rgba(0,0,0,0.5)')
+      .style('font-weight', '500')
+      .style('fill', '#94a3b8')
       .style('pointer-events', 'none')
       .text(d => {
         const name = getDisplayName(d.name);
@@ -250,9 +269,10 @@ export const createSankeyChart = (container, config, data, options = {}) => {
   // --- Interactions ---
   linkPaths
     .on('mouseover', function(event, d) {
-      linkPaths.transition().duration(150).attr('stroke', l => l === d
-        ? d3.color(colorScale(d.source.name)).copy({ opacity: 0.85 }).toString()
-        : d3.color(getLinkColor(l)).copy({ opacity: 0.12 }).toString());
+      const di = sLinks.indexOf(d);
+      linkPaths.transition().duration(150).attr('stroke', (l, i) => l === d
+        ? d3.color(colorScale(d.source.name)).copy({ opacity: 0.6 }).toString()
+        : d3.color(colorScale(l.source.name)).copy({ opacity: 0.06 }).toString());
       const html = `<div style="font-weight:600;margin-bottom:4px;">${getDisplayName(d.source.name)} → ${getDisplayName(d.target.name)}</div>` +
         `<div>${formatValue(d.value)}</div>`;
       showTooltipFn(event, html);
@@ -261,29 +281,28 @@ export const createSankeyChart = (container, config, data, options = {}) => {
       tooltip.style('left', `${event.clientX + 15}px`).style('top', `${event.clientY - 10}px`);
     })
     .on('mouseout', function() {
-      linkPaths.transition().duration(150).attr('stroke', d => getLinkColor(d));
+      linkPaths.transition().duration(150).attr('stroke', (d, i) => `url(#link-grad-${i})`);
       hideTooltip();
     });
 
   nodeRects
     .on('mouseover', function(event, d) {
-      // Highlight all links connected to this node
       linkPaths.transition().duration(150)
-        .attr('stroke', l => (l.source === d || l.target === d)
-          ? d3.color(colorScale(l.source.name)).copy({ opacity: 0.85 }).toString()
-          : d3.color(getLinkColor(l)).copy({ opacity: 0.1 }).toString());
+        .attr('stroke', (l, i) => (l.source === d || l.target === d)
+          ? d3.color(colorScale(l.source.name)).copy({ opacity: 0.6 }).toString()
+          : d3.color(colorScale(l.source.name)).copy({ opacity: 0.06 }).toString());
       const incoming = d.targetLinks.reduce((s, l) => s + l.value, 0);
       const outgoing = d.sourceLinks.reduce((s, l) => s + l.value, 0);
-      let html = `<div style="font-weight:600;margin-bottom:4px;"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${getNodeColor(d)};margin-right:6px;"></span>${getDisplayName(d.name)}</div>`;
-      if (incoming > 0) html += `<div style="color:#a0a0b0;">Incoming: <span style="color:#e0e0e0;font-weight:600;">${formatValue(incoming)}</span></div>`;
-      if (outgoing > 0) html += `<div style="color:#a0a0b0;">Outgoing: <span style="color:#e0e0e0;font-weight:600;">${formatValue(outgoing)}</span></div>`;
+      let html = `<div style="font-weight:600;margin-bottom:4px;"><span style="display:inline-block;width:8px;height:8px;border-radius:3px;background:${getNodeColor(d)};margin-right:6px;"></span>${getDisplayName(d.name)}</div>`;
+      if (incoming > 0) html += `<div style="color:#94a3b8;">Incoming: <span style="color:#e2e8f0;font-weight:600;">${formatValue(incoming)}</span></div>`;
+      if (outgoing > 0) html += `<div style="color:#94a3b8;">Outgoing: <span style="color:#e2e8f0;font-weight:600;">${formatValue(outgoing)}</span></div>`;
       showTooltipFn(event, html);
     })
     .on('mousemove', function(event) {
       tooltip.style('left', `${event.clientX + 15}px`).style('top', `${event.clientY - 10}px`);
     })
     .on('mouseout', function() {
-      linkPaths.transition().duration(150).attr('stroke', d => getLinkColor(d));
+      linkPaths.transition().duration(150).attr('stroke', (d, i) => `url(#link-grad-${i})`);
       hideTooltip();
     });
 

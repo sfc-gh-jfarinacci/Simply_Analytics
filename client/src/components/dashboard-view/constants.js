@@ -1,7 +1,7 @@
 import {
   FiBarChart2, FiAlignLeft, FiColumns, FiMinusCircle,
   FiTrendingUp, FiActivity, FiPieChart, FiDisc, FiSun,
-  FiGrid, FiLayers, FiShare2, FiTable, FiHash, FiType, FiFilter,
+  FiGrid, FiLayers, FiShare2, FiTable, FiHash, FiType,
 } from 'react-icons/fi';
 
 export const LAYOUT_MODES = {
@@ -26,5 +26,4 @@ export const WIDGET_TYPES = [
   { type: 'table', icon: FiTable, label: 'Table', category: 'data' },
   { type: 'metric', icon: FiHash, label: 'Metric', category: 'data' },
   { type: 'title', icon: FiType, label: 'Title', category: 'layout' },
-  { type: 'filter', icon: FiFilter, label: 'Filter', category: 'layout' },
 ];

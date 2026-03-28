@@ -26,21 +26,21 @@ import * as d3 from 'd3';
 // ============================================================================
 
 const DEFAULT_COLORS = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-  '#f43f5e', '#ef4444', '#f97316', '#f59e0b', '#eab308',
-  '#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4',
-  '#0ea5e9', '#3b82f6', '#6366f1'
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc',
 ];
 
 const STYLES = {
   tooltip: {
-    background: 'rgba(30, 30, 40, 0.95)',
-    border: '1px solid rgba(100, 100, 120, 0.3)',
-    borderRadius: '6px',
+    background: 'rgba(15, 23, 42, 0.92)',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '8px',
     padding: '10px 14px',
     fontSize: '12px',
-    color: '#e0e0e0',
-    shadow: '0 4px 12px rgba(0,0,0,0.3)',
+    color: '#e2e8f0',
+    shadow: '0 4px 16px rgba(0,0,0,0.2)',
   },
   label: {
     color: '#a0a0b0',
@@ -242,7 +242,7 @@ const addLegend = (svg, colorScale, options) => {
 export const createPieChart = (container, config, data, options = {}) => {
   if (!container || !data || data.length === 0) return { update: () => {}, destroy: () => {} };
 
-  const {
+  let {
     variant = 'pie',
     showLegend = true,
     legendPosition = 'right',
@@ -258,6 +258,20 @@ export const createPieChart = (container, config, data, options = {}) => {
   const formatValue = createValueFormatter(fieldFormats);
   const getDisplayName = createDisplayNameGetter(columnAliases);
 
+  const containerRect = container.getBoundingClientRect();
+  const totalW = (options.width || containerRect.width || 400);
+  const totalH = (options.height || containerRect.height || 300);
+
+  const isCompact = totalW < 250 || totalH < 180;
+  const isTiny = totalW < 160 || totalH < 120;
+  if (isCompact) {
+    showLegend = false;
+    baseMargin = { top: 5, right: 5, bottom: 5, left: 5 };
+  }
+  if (isTiny) {
+    showLabels = false;
+  }
+
   const legendWidth = 100, legendHeight = 26;
   const isVLeg = showLegend && (legendPosition === 'left' || legendPosition === 'right');
   const isHLeg = showLegend && (legendPosition === 'top' || legendPosition === 'bottom');
@@ -268,10 +282,6 @@ export const createPieChart = (container, config, data, options = {}) => {
     bottom: Math.max(5, baseMargin.bottom + (isHLeg && legendPosition === 'bottom' ? legendHeight : 0)),
     left: Math.max(5, baseMargin.left + (isVLeg && legendPosition === 'left' ? legendWidth : 0)),
   };
-
-  const containerRect = container.getBoundingClientRect();
-  const totalW = (options.width || containerRect.width || 400);
-  const totalH = (options.height || containerRect.height || 300);
   const width = totalW - margin.left - margin.right;
   const height = totalH - margin.top - margin.bottom;
   const radius = Math.min(width, height) / 2;
@@ -425,7 +435,7 @@ export const createPieChart = (container, config, data, options = {}) => {
     }
 
     // Donut centre label
-    if (variant === 'donut' && innerRadius > 30) {
+    if (variant === 'donut' && innerRadius > 30 && !isTiny) {
       chartG.append('text').attr('class', 'donut-total')
         .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
         .style('font-size', innerRadius < 50 ? '14px' : '18px')

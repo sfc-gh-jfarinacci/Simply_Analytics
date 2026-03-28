@@ -17,9 +17,10 @@ export function DashboardToolbar({
   handleTitleDoubleClick, handleTitleChange, handleTitleBlur, handleTitleKeyDown, cancelTitleEdit,
   compactToolbar, toolbarMenuOpen, setToolbarMenuOpen, toolbarMenuRef,
   setShowSettings, showAiChat, setShowAiChat,
-  handleAddSpecialWidget, handleOpenNewWidget,
+  handleAddSpecialWidget, handleOpenNewWidget, handleDeselectWidget,
   setExitEditConfirm, setBackConfirm,
   navigate,
+  showFilterPanel, onToggleFilterPanel, filterFieldCount,
 }) {
   return (
     <div className={`dashboard-toolbar${isEditMode ? ' edit-mode' : ''}`}>
@@ -79,6 +80,15 @@ export function DashboardToolbar({
 
       {!compactToolbar && (
         <div className="toolbar-right">
+          <button
+            className={`toolbar-btn${showFilterPanel ? ' active' : ''}`}
+            onClick={onToggleFilterPanel}
+            title="Dashboard filters"
+          >
+            <FiFilter />
+            {filterFieldCount > 0 && <span className="toolbar-filter-badge">{filterFieldCount}</span>}
+          </button>
+
           {!isEditMode && canEdit && (
             <button className="toolbar-btn toolbar-btn-edit" onClick={() => setIsEditMode(true)} title="Edit dashboard (E)">
               <FiEdit3 /><span>Edit</span>
@@ -97,7 +107,7 @@ export function DashboardToolbar({
               </div>
 
               {(hasUnsavedChanges || saveSuccess) && (
-                <button className={`toolbar-btn toolbar-btn-save ${isSaving ? 'saving' : ''} ${saveSuccess ? 'success' : ''}`} onClick={handleSaveWithAnimation} disabled={isSaving} title="Save changes (⌘S)">
+                <button className={`toolbar-btn toolbar-btn-save ${isSaving ? 'saving' : ''} ${saveSuccess ? 'success' : ''}`} onClick={() => { handleDeselectWidget?.(); handleSaveWithAnimation(); }} disabled={isSaving} title="Save changes (⌘S)">
                   {saveSuccess ? <FiCheck /> : <FiSave />}
                   <span>{saveSuccess ? 'Saved!' : isSaving ? 'Saving...' : 'Save'}</span>
                 </button>
@@ -112,7 +122,6 @@ export function DashboardToolbar({
               </button>
 
               <button className="toolbar-btn" onClick={() => handleAddSpecialWidget('title')} title="Add title / header"><FiType /></button>
-              <button className="toolbar-btn" onClick={() => handleAddSpecialWidget('filter')} title="Add dashboard filter"><FiFilter /></button>
 
               <button className="toolbar-btn toolbar-btn-primary" onClick={handleOpenNewWidget}>
                 <FiPlus /><span>Add Widget</span>
@@ -121,6 +130,7 @@ export function DashboardToolbar({
               <button
                 className="toolbar-btn toolbar-btn-done"
                 onClick={() => {
+                  handleDeselectWidget?.();
                   if (hasUnsavedChanges) setExitEditConfirm(true);
                   else setIsEditMode(false);
                 }}
@@ -154,11 +164,12 @@ export function DashboardToolbar({
                   <button className="dropdown-btn primary" onClick={() => { handleOpenNewWidget(); setToolbarMenuOpen(false); }}><FiPlus /> Add Widget</button>
                   <div className="dropdown-divider" />
                   {hasUnsavedChanges && (
-                    <button className="dropdown-btn save" onClick={() => { saveDashboard(); setToolbarMenuOpen(false); }} disabled={isSaving}>
+                    <button className="dropdown-btn save" onClick={() => { handleDeselectWidget?.(); saveDashboard(); setToolbarMenuOpen(false); }} disabled={isSaving}>
                       <FiSave /> {isSaving ? 'Saving...' : 'Save'}
                     </button>
                   )}
                   <button className="dropdown-btn" onClick={() => {
+                    handleDeselectWidget?.();
                     setToolbarMenuOpen(false);
                     if (hasUnsavedChanges) setExitEditConfirm(true);
                     else setIsEditMode(false);

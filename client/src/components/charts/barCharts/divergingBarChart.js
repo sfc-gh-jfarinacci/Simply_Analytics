@@ -22,8 +22,9 @@ const renderCenterLine = (g, x, height) => {
     .style('stroke', STYLES.axis.lineColor).style('stroke-width', 1.5);
 };
 
-const renderXValueAxis = (axisGroup, scale) => {
-  axisGroup.call(d3.axisBottom(scale).ticks(7).tickFormat(smartAxisFormat))
+const renderXValueAxis = (axisGroup, scale, chartWidth) => {
+  const tickCount = Math.max(2, Math.min(7, Math.floor((chartWidth || 300) / 70)));
+  axisGroup.call(d3.axisBottom(scale).ticks(tickCount).tickFormat(smartAxisFormat))
     .selectAll('text').style('fill', STYLES.axis.textColor).style('font-size', STYLES.axis.fontSize);
 };
 
@@ -68,7 +69,7 @@ export const createDivergingBarChart = (container, config, data, options = {}) =
     const x = d3.scaleLinear().domain([-maxAbsVal * 1.1, maxAbsVal * 1.1]).nice().range([0, width]);
     const colorScale = sharedColorScale || d3.scaleOrdinal().domain(groupKeys).range(colors);
 
-    renderVerticalGrid(gridGroup, x, height, showGrid);
+    renderVerticalGrid(gridGroup, x, height, showGrid, width);
     barsGroup.selectAll('*').remove();
     labelsGroup.selectAll('*').remove();
     renderCenterLine(g, x, height);
@@ -169,7 +170,7 @@ export const createDivergingBarChart = (container, config, data, options = {}) =
     const x = d3.scaleLinear().domain([-maxExt * 1.1, maxExt * 1.1]).nice().range([0, width]);
     const colorScale = sharedColorScale || d3.scaleOrdinal().domain(stackKeys).range(colors);
 
-    renderVerticalGrid(gridGroup, x, height, showGrid);
+    renderVerticalGrid(gridGroup, x, height, showGrid, width);
     barsGroup.selectAll('*').remove();
     labelsGroup.selectAll('*').remove();
     renderCenterLine(g, x, height);
@@ -231,7 +232,7 @@ export const createDivergingBarChart = (container, config, data, options = {}) =
     const colorScale = sharedColorScale || d3.scaleOrdinal().domain(stackKeys).range(colors);
     const stack = d3.stack().keys(stackKeys).order(d3.stackOrderNone).offset(d3.stackOffsetDiverging);
 
-    renderVerticalGrid(gridGroup, x, height, showGrid);
+    renderVerticalGrid(gridGroup, x, height, showGrid, width);
     barsGroup.selectAll('*').remove();
     labelsGroup.selectAll('*').remove();
     renderCenterLine(g, x, height);
@@ -335,15 +336,16 @@ export const createDivergingBarChart = (container, config, data, options = {}) =
 
         if (activeXScale) {
           const zx = t.rescaleX(activeXScale);
-          xAxisGroup.call(d3.axisBottom(zx).ticks(7).tickFormat(smartAxisFormat));
+          const zoomXTicks = Math.max(2, Math.min(7, Math.floor(width / 70)));
+          xAxisGroup.call(d3.axisBottom(zx).ticks(zoomXTicks).tickFormat(smartAxisFormat));
           xAxisGroup.selectAll('text').style('fill', STYLES.axis.textColor).style('font-size', STYLES.axis.fontSize);
           xAxisGroup.selectAll('line, path').style('stroke', STYLES.axis.lineColor);
           g.selectAll('.center-line').attr('x1', zx(0)).attr('x2', zx(0));
           gridGroup.selectAll('*').remove();
           if (showGrid) {
-            gridGroup.selectAll('.grid-line').data(zx.ticks(7)).enter().append('line')
+            gridGroup.selectAll('.grid-line').data(zx.ticks(zoomXTicks)).enter().append('line')
               .attr('class', 'grid-line').attr('x1', d => zx(d)).attr('x2', d => zx(d))
-              .attr('y1', 0).attr('y2', height).style('stroke', STYLES.grid.lineColor).style('stroke-dasharray', STYLES.grid.dashArray);
+              .attr('y1', 0).attr('y2', height).style('stroke', STYLES.grid.lineColor);
           }
         }
 

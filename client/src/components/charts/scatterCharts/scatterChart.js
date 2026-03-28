@@ -1,19 +1,19 @@
 import * as d3 from 'd3';
 
 const DEFAULT_COLORS = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-  '#f43f5e', '#ef4444', '#f97316', '#f59e0b', '#eab308',
-  '#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4',
-  '#0ea5e9', '#3b82f6',
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc',
 ];
 
 const STYLES = {
-  axis: { textColor: '#a0a0b0', lineColor: 'rgba(100, 100, 120, 0.3)', fontSize: '11px' },
-  grid: { lineColor: 'rgba(100, 100, 120, 0.15)', dashArray: '3,3' },
+  axis: { textColor: '#94a3b8', lineColor: 'rgba(148, 163, 184, 0.15)', fontSize: '11px' },
+  grid: { lineColor: 'rgba(148, 163, 184, 0.1)' },
   tooltip: {
-    background: 'rgba(30, 30, 40, 0.95)', border: '1px solid rgba(100, 100, 120, 0.3)',
-    borderRadius: '6px', padding: '10px 14px', fontSize: '12px', color: '#e0e0e0',
-    shadow: '0 4px 12px rgba(0,0,0,0.3)',
+    background: 'rgba(15, 23, 42, 0.92)', border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#e2e8f0',
+    shadow: '0 4px 16px rgba(0,0,0,0.2)',
   },
   dot: { radius: 5, hoverRadius: 7, dimmedOpacity: 0.15, fillOpacity: 0.7, strokeWidth: 1.5 },
   label: { color: '#a0a0b0', fontFamily: 'system-ui, -apple-system, sans-serif' },
@@ -87,7 +87,7 @@ const truncateLabel = (label, maxLen) => {
 export const createScatterChart = (container, config, data, options = {}) => {
   if (!container || !data || data.length === 0) return { update: () => {}, destroy: () => {} };
 
-  const {
+  let {
     showLegend = true,
     legendPosition = 'right',
     xAxisTitle = '',
@@ -99,15 +99,40 @@ export const createScatterChart = (container, config, data, options = {}) => {
     columnAliases = {},
     colors = DEFAULT_COLORS,
     sharedColorScale = null,
+    margin: baseMargin = { top: 20, right: 20, bottom: 45, left: 55 },
   } = options;
 
   const formatValue = createValueFormatter(fieldFormats);
   const getDisplayName = createDisplayNameGetter(columnAliases);
 
+  const containerRect = container.getBoundingClientRect();
+  const totalW = options.width || containerRect.width || 400;
+  const totalH = options.height || containerRect.height || 300;
+
+  const isCompact = totalW < 250 || totalH < 180;
+  const isTiny = totalW < 160 || totalH < 120;
+  if (isTiny) {
+    showLegend = false;
+    xAxisTitle = '';
+    yAxisTitle = '';
+    showLabels = false;
+    showGrid = false;
+    baseMargin = { top: 4, right: 4, bottom: 20, left: 30 };
+  } else if (isCompact) {
+    showLegend = false;
+    xAxisTitle = '';
+    yAxisTitle = '';
+    baseMargin = {
+      top: Math.min(baseMargin.top, 10),
+      right: Math.min(baseMargin.right, 10),
+      bottom: Math.min(baseMargin.bottom, 30),
+      left: Math.min(baseMargin.left, 40),
+    };
+  }
+
   const legendWidth = 90, legendHeight = 26;
   const isVLegend = showLegend && (legendPosition === 'left' || legendPosition === 'right');
   const isHLegend = showLegend && (legendPosition === 'top' || legendPosition === 'bottom');
-  const baseMargin = { top: 20, right: 20, bottom: 45, left: 55 };
 
   const margin = {
     top: Math.max(5, baseMargin.top + (isHLegend && legendPosition === 'top' ? legendHeight : 0)),
@@ -116,9 +141,8 @@ export const createScatterChart = (container, config, data, options = {}) => {
     left: Math.max(5, baseMargin.left + (isVLegend && legendPosition === 'left' ? legendWidth : 0) + (yAxisTitle ? 20 : 0)),
   };
 
-  const containerRect = container.getBoundingClientRect();
-  const width = (options.width || containerRect.width || 400) - margin.left - margin.right;
-  const height = (options.height || containerRect.height || 300) - margin.top - margin.bottom;
+  const width = totalW - margin.left - margin.right;
+  const height = totalH - margin.top - margin.bottom;
 
   const xField = config.xField || config.x_axis;
   const yField = config.yField || (config.series || [])[0];
@@ -198,11 +222,11 @@ export const createScatterChart = (container, config, data, options = {}) => {
     if (!showGrid) return;
     gridGroup.selectAll('.grid-h').data(ys.ticks(5)).enter().append('line')
       .attr('x1', 0).attr('x2', width).attr('y1', d => ys(d)).attr('y2', d => ys(d))
-      .style('stroke', STYLES.grid.lineColor).style('stroke-dasharray', STYLES.grid.dashArray);
+      .style('stroke', STYLES.grid.lineColor);
     if (xIsNumeric) {
       gridGroup.selectAll('.grid-v').data(xs.ticks(5)).enter().append('line')
         .attr('x1', d => xs(d)).attr('x2', d => xs(d)).attr('y1', 0).attr('y2', height)
-        .style('stroke', STYLES.grid.lineColor).style('stroke-dasharray', STYLES.grid.dashArray);
+        .style('stroke', STYLES.grid.lineColor);
     }
   };
   renderGrid(xScale, yScale);

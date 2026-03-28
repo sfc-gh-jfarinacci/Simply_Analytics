@@ -4,7 +4,16 @@ export function createHeatmapChart(container, data, {
   width, height, xField, yField, valueField,
   colorScheme = 'blues', animate = true, formatValue, showLabels = false,
 }) {
-  const margin = { top: 30, right: 20, bottom: 60, left: 80 };
+  const isTiny = width < 160 || height < 120;
+  const isCompact = width < 250 || height < 180;
+  let margin = { top: 30, right: 20, bottom: 60, left: 80 };
+  if (isTiny) {
+    margin = { top: 4, right: 4, bottom: 20, left: 25 };
+  } else if (isCompact) {
+    margin = { top: 10, right: 10, bottom: 30, left: 40 };
+  }
+  let showCellLabels = showLabels;
+  if (isTiny) showCellLabels = false;
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
   if (innerW <= 0 || innerH <= 0 || !data.length) return;
@@ -82,7 +91,7 @@ export function createHeatmapChart(container, data, {
       tooltip.style('opacity', 0);
     });
 
-  if (showLabels && x.bandwidth() > 28 && y.bandwidth() > 16) {
+  if (showCellLabels && x.bandwidth() > 28 && y.bandwidth() > 16) {
     const fmt = formatValue || d3.format(',.0f');
     g.selectAll('text.cell-label')
       .data(cellData.filter(d => d.value != null), d => `${d.x}|||${d.y}`)
@@ -104,12 +113,14 @@ export function createHeatmapChart(container, data, {
   xAxisG.call(d3.axisBottom(x).tickSize(0))
     .selectAll('text').attr('fill', '#888').attr('font-size', 10)
     .attr('transform', xVals.length > 10 ? 'rotate(-45)' : null)
-    .style('text-anchor', xVals.length > 10 ? 'end' : 'middle');
+    .style('text-anchor', xVals.length > 10 ? 'end' : 'middle')
+    .style('opacity', isTiny ? 0 : 1);
   xAxisG.select('.domain').remove();
 
   const yAxisG = g.selectAll('g.y-axis').data([null]).join('g').attr('class', 'y-axis');
   yAxisG.call(d3.axisLeft(y).tickSize(0))
-    .selectAll('text').attr('fill', '#888').attr('font-size', 10);
+    .selectAll('text').attr('fill', '#888').attr('font-size', 10)
+    .style('opacity', isTiny ? 0 : 1);
   yAxisG.select('.domain').remove();
 }
 

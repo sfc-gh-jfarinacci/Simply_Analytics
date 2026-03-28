@@ -29,6 +29,7 @@ import {
   ConnectingState, ConnectionErrorState, EmptyCanvasState,
   LoadingState, ErrorState, SelectDashboardState,
 } from '../components/dashboard-view/components';
+import DashboardFilterPanel from '../components/dashboard-view/components/DashboardFilterPanel';
 
 import { LAYOUT_MODES, WIDGET_TYPES } from '../components/dashboard-view/constants';
 
@@ -86,6 +87,10 @@ const DashboardView = () => {
     } catch (err) { console.error('Save failed:', err); }
   }, [hasUnsavedChanges, isSaving, saveDashboard]);
 
+  // Global filter panel
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [globalFilterFields, setGlobalFilterFields] = useState([]);
+
   // Connection + temp filters
   const [tempFilters, setTempFilters] = useState([]);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -98,6 +103,23 @@ const DashboardView = () => {
   const currentDashboardIdRef = useRef(null);
 
   useEffect(() => { currentDashboardIdRef.current = currentDashboard?.id; }, [currentDashboard?.id]);
+
+  // Load global filter fields from dashboard
+  useEffect(() => {
+    if (currentDashboard?.globalFilterFields) {
+      setGlobalFilterFields(currentDashboard.globalFilterFields);
+    } else {
+      setGlobalFilterFields([]);
+    }
+    setShowFilterPanel(false);
+  }, [currentDashboard?.id]);
+
+  const handleUpdateFilterFields = useCallback((fields) => {
+    setGlobalFilterFields(fields);
+    if (currentDashboard) {
+      updateDashboard(currentDashboard.id, { globalFilterFields: fields });
+    }
+  }, [currentDashboard, updateDashboard]);
 
   // Load dashboard from URL
   useEffect(() => {
@@ -272,9 +294,18 @@ const DashboardView = () => {
               showAiChat={showAiChat} setShowAiChat={setShowAiChat}
               handleAddSpecialWidget={handleAddSpecialWidget}
               handleOpenNewWidget={handleOpenNewWidget}
+              handleDeselectWidget={handleDeselectWidget}
               setExitEditConfirm={setExitEditConfirm}
               setBackConfirm={setBackConfirm}
               navigate={navigate}
+              showFilterPanel={showFilterPanel}
+              onToggleFilterPanel={() => {
+                setShowFilterPanel(prev => {
+                  if (!prev) handleDeselectWidget();
+                  return !prev;
+                });
+              }}
+              filterFieldCount={globalFilterFields.length}
             />
 
             <div className="dashboard-content-scroll">
@@ -291,7 +322,7 @@ const DashboardView = () => {
 
                 <div
                   ref={canvasRef}
-                  className={`dashboard-canvas layout-${layoutMode} device-${devicePreview}${isEditMode ? ' edit-mode' : ''}${editingWidget && useSidePanel ? ' panel-open' : ''}`}
+                  className={`dashboard-canvas layout-${layoutMode} device-${devicePreview}${isEditMode ? ' edit-mode' : ''}${editingWidget && useSidePanel ? ' panel-open' : ''}${showFilterPanel ? ' filter-panel-open' : ''}`}
                   style={{ backgroundColor: currentTab?.canvasColor || 'transparent' }}
                   onClick={(e) => {
                     if (e.target === e.currentTarget || e.target.closest('.widgets-grid') === e.target) handleDeselectWidget();
@@ -318,8 +349,8 @@ const DashboardView = () => {
                           <DashboardWidget
                             key={widget.id}
                             widget={widget}
-                            gridPosition={{ x, y, w, h, minW: 2, minH: 2 }}
-                            onSelect={isEditMode ? handleSelectWidget : undefined}
+                            gridPosition={{ x, y, w, h, minW: pos.minW || 1, minH: pos.minH || 1 }}
+                            onSelect={isEditMode ? (w) => { setShowFilterPanel(false); handleSelectWidget(w); } : undefined}
                             onDelete={isEditMode && canDelete ? () => handleDeleteWidget(widget.id) : undefined}
                             onResize={isEditMode ? handleWidgetResize : undefined}
                             onUpdateTitle={isEditMode ? (widgetId, newTitle) => updateWidget(currentDashboard.id, widgetId, { title: newTitle }) : undefined}
@@ -412,6 +443,15 @@ const DashboardView = () => {
           onClose={() => setShowWidgetPicker(false)}
         />
       )}
+
+      <DashboardFilterPanel
+        open={showFilterPanel}
+        onClose={() => setShowFilterPanel(false)}
+        isEditMode={isEditMode}
+        dashboard={currentDashboard}
+        filterFields={globalFilterFields}
+        onUpdateFilterFields={handleUpdateFilterFields}
+      />
 
       {useSidePanel && (
         <WidgetEditorWrapper

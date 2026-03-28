@@ -20,21 +20,21 @@ import * as d3 from 'd3';
 
 const STYLES = {
   tooltip: {
-    background: 'rgba(30, 30, 40, 0.95)',
-    border: '1px solid rgba(100, 100, 120, 0.3)',
-    borderRadius: '6px',
+    background: 'rgba(15, 23, 42, 0.92)',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '8px',
     padding: '10px 14px',
     fontSize: '12px',
-    color: '#e0e0e0',
-    shadow: '0 4px 12px rgba(0,0,0,0.3)',
+    color: '#e2e8f0',
+    shadow: '0 4px 16px rgba(0,0,0,0.2)',
   },
 };
 
 const DEFAULT_COLORS = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-  '#f43f5e', '#ef4444', '#f97316', '#f59e0b', '#eab308',
-  '#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4',
-  '#0ea5e9', '#3b82f6',
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+  '#4ade80', '#f9a8d4', '#67e8f9', '#fcd34d', '#c084fc',
+  '#86efac', '#fda4af', '#7dd3fc',
 ];
 
 const createTooltip = () => {
@@ -91,7 +91,11 @@ export const createFunnelChart = (container, config, data, options = {}) => {
   const containerRect = container.getBoundingClientRect();
   const totalW = options.width || containerRect.width || 400;
   const totalH = options.height || containerRect.height || 300;
-  const margin = { top: 12, right: 16, bottom: 12, left: 16 };
+  const isCompact = totalW < 250;
+  let margin = { top: 12, right: 16, bottom: 12, left: 16 };
+  if (isCompact) {
+    margin = { top: 6, right: 8, bottom: 6, left: 8 };
+  }
   const width = totalW - margin.left - margin.right;
   const height = totalH - margin.top - margin.bottom;
 
@@ -137,6 +141,19 @@ export const createFunnelChart = (container, config, data, options = {}) => {
 
   const colorScale = d3.scaleOrdinal().domain(stages.map(s => s.name)).range(colors);
 
+  const r = Math.min(8, stageH * 0.2);
+
+  // Build a rounded-trapezoid path: top-left, top-right, bottom-right, bottom-left
+  const trapezoidPath = (topW, botW, h, cx, r) => {
+    const tl = cx - topW / 2, tr = cx + topW / 2;
+    const bl = cx - botW / 2, br = cx + botW / 2;
+    const cr = Math.min(r, Math.abs(tr - br), h / 2);
+    return `M${tl + cr},0 L${tr - cr},0 Q${tr},0 ${tr - (tr - br) * (cr / h)},${cr}`
+      + ` L${br + (tr - br) * (cr / h)},${h - cr} Q${br},${h} ${br - cr},${h}`
+      + ` L${bl + cr},${h} Q${bl},${h} ${bl + (tl - bl) * (cr / h)},${h - cr}`
+      + ` L${tl - (tl - bl) * (cr / h)},${cr} Q${tl},0 ${tl + cr},0 Z`;
+  };
+
   stages.forEach((stage, i) => {
     const widthRatio = Math.max(minWidthRatio, stage.value / maxValue);
     const nextRatio = i < stages.length - 1
@@ -148,62 +165,43 @@ export const createFunnelChart = (container, config, data, options = {}) => {
     const y = i * (stageH + stageGap);
     const cx = width / 2;
 
-    // Trapezoid points: top-left, top-right, bottom-right, bottom-left
-    const points = [
-      [cx - topW / 2, y],
-      [cx + topW / 2, y],
-      [cx + botW / 2, y + stageH],
-      [cx - botW / 2, y + stageH],
-    ];
+    const g = chartG.append('g').attr('class', 'funnel-stage')
+      .attr('transform', `translate(0,${y})`);
 
-    const g = chartG.append('g').attr('class', 'funnel-stage');
-
-    const poly = g.append('polygon')
-      .attr('points', points.map(p => p.join(',')).join(' '))
+    const shape = g.append('path')
+      .attr('d', trapezoidPath(topW, botW, stageH, cx, r))
       .attr('fill', colorScale(stage.name))
-      .attr('stroke', 'rgba(255,255,255,0.15)')
-      .attr('stroke-width', 0.5)
-      .attr('rx', 3)
       .style('cursor', 'pointer');
 
     if (animate) {
-      // Animate from zero width to full
-      const midY = y + stageH / 2;
-      const zeroPoints = [
-        [cx, midY], [cx, midY], [cx, midY], [cx, midY],
-      ];
-      poly.attr('points', zeroPoints.map(p => p.join(',')).join(' '))
+      const zeroPath = trapezoidPath(0, 0, stageH, cx, 0);
+      shape.attr('d', zeroPath)
         .transition().duration(500).delay(i * 80).ease(d3.easeCubicOut)
-        .attr('points', points.map(p => p.join(',')).join(' '));
+        .attr('d', trapezoidPath(topW, botW, stageH, cx, r));
     }
 
-    // Labels
-    if (showLabels && stageH >= 18) {
-      const labelY = y + stageH / 2;
+    if (showLabels && stageH >= 18 && !(isCompact && stageH < 30)) {
+      const labelY = stageH / 2;
       const convRate = i === 0 ? '100%' : `${((stage.value / stages[0].value) * 100).toFixed(1)}%`;
       const stepRate = i === 0 ? '' : ` (${((stage.value / stages[i - 1].value) * 100).toFixed(1)}%)`;
 
-      // Stage name
       const nameEl = g.append('text')
         .attr('x', cx).attr('y', stageH >= 40 ? labelY - 6 : labelY + 1)
         .attr('text-anchor', 'middle')
         .attr('dy', '0.35em')
         .style('font-size', stageH < 30 ? '10px' : '12px')
-        .style('font-weight', '700')
+        .style('font-weight', '600')
         .style('fill', '#fff')
-        .style('text-shadow', '0 1px 3px rgba(0,0,0,0.5)')
         .style('pointer-events', 'none')
         .text(getDisplayName(stage.name));
 
-      // Value + conversion
       if (stageH >= 40) {
         g.append('text')
           .attr('x', cx).attr('y', labelY + 8)
           .attr('text-anchor', 'middle')
           .attr('dy', '0.35em')
           .style('font-size', '10px')
-          .style('fill', 'rgba(255,255,255,0.7)')
-          .style('text-shadow', '0 1px 2px rgba(0,0,0,0.4)')
+          .style('fill', 'rgba(255,255,255,0.75)')
           .style('pointer-events', 'none')
           .text(`${formatValue(stage.value)}  •  ${convRate}${stepRate}`);
       }
@@ -218,19 +216,18 @@ export const createFunnelChart = (container, config, data, options = {}) => {
       }
     }
 
-    // Tooltip
-    poly
+    shape
       .on('mouseover', function(event) {
-        d3.select(this).style('filter', 'brightness(1.15)');
+        d3.select(this).transition().duration(150).attr('opacity', 0.85);
         const convRate = ((stage.value / stages[0].value) * 100).toFixed(1);
         const stepConv = i > 0 ? ((stage.value / stages[i - 1].value) * 100).toFixed(1) : null;
-        let html = `<div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">`;
-        html += `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorScale(stage.name)};margin-right:6px;"></span>`;
+        let html = `<div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:4px;">`;
+        html += `<span style="display:inline-block;width:8px;height:8px;border-radius:3px;background:${colorScale(stage.name)};margin-right:6px;"></span>`;
         html += `${getDisplayName(stage.name)}</div>`;
-        html += `<div style="display:flex;gap:8px;margin:3px 0;"><span style="color:#a0a0b0;">Value:</span><span style="font-weight:600;margin-left:auto;">${formatValue(stage.value)}</span></div>`;
-        html += `<div style="display:flex;gap:8px;margin:3px 0;"><span style="color:#a0a0b0;">Overall:</span><span style="font-weight:600;margin-left:auto;">${convRate}%</span></div>`;
+        html += `<div style="display:flex;gap:8px;margin:3px 0;"><span style="color:#94a3b8;">Value:</span><span style="font-weight:600;margin-left:auto;">${formatValue(stage.value)}</span></div>`;
+        html += `<div style="display:flex;gap:8px;margin:3px 0;"><span style="color:#94a3b8;">Overall:</span><span style="font-weight:600;margin-left:auto;">${convRate}%</span></div>`;
         if (stepConv) {
-          html += `<div style="display:flex;gap:8px;margin:3px 0;"><span style="color:#a0a0b0;">Step:</span><span style="font-weight:600;margin-left:auto;">${stepConv}%</span></div>`;
+          html += `<div style="display:flex;gap:8px;margin:3px 0;"><span style="color:#94a3b8;">Step:</span><span style="font-weight:600;margin-left:auto;">${stepConv}%</span></div>`;
         }
         tooltip.html(html).style('visibility', 'visible').style('opacity', '1')
           .style('left', `${event.clientX + 15}px`).style('top', `${event.clientY - 10}px`);
@@ -239,7 +236,7 @@ export const createFunnelChart = (container, config, data, options = {}) => {
         tooltip.style('left', `${event.clientX + 15}px`).style('top', `${event.clientY - 10}px`);
       })
       .on('mouseout', function() {
-        d3.select(this).style('filter', null);
+        d3.select(this).transition().duration(150).attr('opacity', 1);
         tooltip.style('visibility', 'hidden').style('opacity', '0');
       });
   });

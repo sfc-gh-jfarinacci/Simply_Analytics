@@ -5,6 +5,7 @@ export function createGaugeChart(container, value, {
   label = '', colorScheme = 'blues', colors, animate = true,
   formatValue: fmtFn, thresholds,
 }) {
+  const shortGauge = height < 100;
   const size = Math.min(width, height * 1.3);
   const radius = size * 0.42;
   const arcWidth = radius * 0.22;
@@ -29,7 +30,7 @@ export function createGaugeChart(container, value, {
     .cornerRadius(arcWidth / 2);
 
   g.selectAll('path.gauge-bg').data([null]).join('path')
-    .attr('class', 'gauge-bg').attr('d', bgArc()).attr('fill', '#2a2a3a');
+    .attr('class', 'gauge-bg').attr('d', bgArc()).attr('fill', 'rgba(148, 163, 184, 0.12)');
 
   const clampedValue = Math.max(minValue, Math.min(maxValue, value));
   const ratio = (clampedValue - minValue) / (maxValue - minValue || 1);
@@ -60,12 +61,12 @@ export function createGaugeChart(container, value, {
   const needleG = g.selectAll('g.needle').data([null]).join('g').attr('class', 'needle');
 
   needleG.selectAll('circle.needle-hub').data([null]).join('circle')
-    .attr('class', 'needle-hub').attr('r', arcWidth * 0.35).attr('fill', '#e0e0e0');
+    .attr('class', 'needle-hub').attr('r', arcWidth * 0.35).attr('fill', '#cbd5e1');
 
   const needlePath = needleG.selectAll('line.needle-line').data([null]).join('line')
     .attr('class', 'needle-line')
     .attr('x1', 0).attr('y1', 0)
-    .attr('stroke', '#e0e0e0').attr('stroke-width', 2.5).attr('stroke-linecap', 'round');
+    .attr('stroke', '#cbd5e1').attr('stroke-width', 2).attr('stroke-linecap', 'round');
 
   if (animate) {
     needlePath.transition().duration(1200).ease(d3.easeCubicOut)
@@ -83,33 +84,39 @@ export function createGaugeChart(container, value, {
       .attr('y2', -Math.cos(targetAngle) * needleLen);
   }
 
-  const fmt = fmtFn || d3.format(',.1f');
+  const smartFmt = (v) => {
+    if (v == null) return '—';
+    if (Math.abs(v) >= 1e9) return d3.format(',.1f')(v / 1e9) + 'B';
+    if (Math.abs(v) >= 1e6) return d3.format(',.1f')(v / 1e6) + 'M';
+    if (Math.abs(v) >= 1e4) return d3.format(',.0f')(v);
+    if (Number.isInteger(v)) return d3.format(',')(v);
+    return d3.format(',.2f')(v);
+  };
+  const fmt = fmtFn || smartFmt;
+  const valueFontSize = shortGauge ? Math.max(10, radius * 0.2) : Math.max(14, radius * 0.3);
+
+  g.selectAll('text.gauge-label').data([]).join('text');
+
   g.selectAll('text.gauge-value-text').data([null]).join('text')
-    .attr('class', 'gauge-value-text').attr('y', radius * 0.45)
-    .attr('text-anchor', 'middle').attr('fill', '#e0e0e0')
-    .attr('font-size', Math.max(14, radius * 0.25)).attr('font-weight', 600)
+    .attr('class', 'gauge-value-text')
+    .attr('y', radius * 0.55)
+    .attr('text-anchor', 'middle').attr('fill', '#e2e8f0')
+    .attr('font-size', valueFontSize).attr('font-weight', 600)
     .text(fmt(value));
 
-  if (label) {
-    g.selectAll('text.gauge-label').data([null]).join('text')
-      .attr('class', 'gauge-label').attr('y', radius * 0.65)
-      .attr('text-anchor', 'middle').attr('fill', '#888')
-      .attr('font-size', Math.max(10, radius * 0.14)).text(label);
-  }
-
   const tickFmt = d3.format(',.0f');
-  g.selectAll('text.gauge-min').data([null]).join('text')
+  g.selectAll('text.gauge-min').data(shortGauge ? [] : [null]).join('text')
     .attr('class', 'gauge-min')
     .attr('x', Math.sin(startAngle) * (radius + 12))
     .attr('y', -Math.cos(startAngle) * (radius + 12))
-    .attr('text-anchor', 'middle').attr('fill', '#666').attr('font-size', 10)
+    .attr('text-anchor', 'middle').attr('fill', '#94a3b8').attr('font-size', 10)
     .text(tickFmt(minValue));
 
-  g.selectAll('text.gauge-max').data([null]).join('text')
+  g.selectAll('text.gauge-max').data(shortGauge ? [] : [null]).join('text')
     .attr('class', 'gauge-max')
     .attr('x', Math.sin(endAngle) * (radius + 12))
     .attr('y', -Math.cos(endAngle) * (radius + 12))
-    .attr('text-anchor', 'middle').attr('fill', '#666').attr('font-size', 10)
+    .attr('text-anchor', 'middle').attr('fill', '#94a3b8').attr('font-size', 10)
     .text(tickFmt(maxValue));
 }
 

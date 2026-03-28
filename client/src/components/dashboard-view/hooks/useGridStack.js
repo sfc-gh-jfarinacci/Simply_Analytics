@@ -73,8 +73,8 @@ export function useGridStack({
           y: parseInt(item.getAttribute('gs-y')) || 0,
           w: parseInt(item.getAttribute('gs-w')) || 4,
           h: parseInt(item.getAttribute('gs-h')) || 3,
-          minW: parseInt(item.getAttribute('gs-min-w')) || 2,
-          minH: parseInt(item.getAttribute('gs-min-h')) || 2,
+          minW: parseInt(item.getAttribute('gs-min-w')) || 1,
+          minH: parseInt(item.getAttribute('gs-min-h')) || 1,
           autoPosition: false,
           noMove: !isEditMode,
         });
@@ -141,8 +141,8 @@ export function useGridStack({
             y: parseInt(item.getAttribute('gs-y')) || 0,
             w: parseInt(item.getAttribute('gs-w')) || 4,
             h: parseInt(item.getAttribute('gs-h')) || 3,
-            minW: parseInt(item.getAttribute('gs-min-w')) || 2,
-            minH: parseInt(item.getAttribute('gs-min-h')) || 2,
+            minW: parseInt(item.getAttribute('gs-min-w')) || 1,
+            minH: parseInt(item.getAttribute('gs-min-h')) || 1,
             autoPosition: false,
             noMove: !isEditMode,
           });

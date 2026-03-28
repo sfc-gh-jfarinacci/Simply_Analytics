@@ -8,8 +8,14 @@ import * as d3 from 'd3';
 // - Categorical: Distinct colors for different categories
 // - Sequential: Light→Dark gradients for showing magnitude (single or multi-hue)
 // - Diverging: Two colors with neutral midpoint (for above/below comparisons)
+const MODERN_PALETTE = [
+  '#6366f1', '#f472b6', '#38bdf8', '#34d399', '#fbbf24',
+  '#fb923c', '#a78bfa', '#2dd4bf', '#f87171', '#818cf8',
+];
+
 export const COLOR_PRESETS = [
   // Categorical - distinct colors for different categories
+  { name: 'Modern', schemeKey: 'modern', type: 'categorical', colors: MODERN_PALETTE },
   { name: 'Tableau', schemeKey: 'tableau10', type: 'categorical', colors: d3.schemeTableau10 },
   { name: 'Vivid', schemeKey: 'category10', type: 'categorical', colors: d3.schemeCategory10 },
   { name: 'Bold', schemeKey: 'set1', type: 'categorical', colors: d3.schemeSet1 },
@@ -76,8 +82,8 @@ export const TEXT_COLORS = [
 
 // Label color options (for axis labels, legends)
 export const LABEL_COLORS = [
-  { name: 'Default', color: '#a0a0b0' },
-  { name: 'Light', color: '#d0d0d8' },
+  { name: 'Default', color: '#94a3b8' },
+  { name: 'Light', color: '#cbd5e1' },
   { name: 'White', color: '#ffffff' },
   { name: 'Cyan', color: '#00d4ff' },
   { name: 'Muted', color: '#6b7280' },

@@ -27,8 +27,9 @@ const renderXAxis = (axisGroup, scale, options = {}) => {
     .text(d => truncateLabel(d, maxLabelLen));
 };
 
-const renderYAxis = (axisGroup, scale) => {
-  axisGroup.call(d3.axisLeft(scale).ticks(5).tickFormat(smartAxisFormat))
+const renderYAxis = (axisGroup, scale, chartHeight) => {
+  const tickCount = Math.max(2, Math.min(5, Math.floor((chartHeight || 200) / 40)));
+  axisGroup.call(d3.axisLeft(scale).ticks(tickCount).tickFormat(smartAxisFormat))
     .selectAll('text').style('fill', STYLES.axis.textColor).style('font-size', STYLES.axis.fontSize);
 };
 
@@ -147,7 +148,7 @@ export const createVerticalBarChart = (container, config, data, options = {}) =>
     const y = d3.scaleLinear().domain([0, maxVal * 1.1]).nice().range([height, 0]);
     const colorScale = sharedColorScale || d3.scaleOrdinal().domain(groupKeys).range(colors);
 
-    renderHorizontalGrid(gridGroup, y, width, showGrid);
+    renderHorizontalGrid(gridGroup, y, width, showGrid, height);
     barsGroup.selectAll('*').remove();
     labelsGroup.selectAll('*').remove();
 
@@ -238,7 +239,7 @@ export const createVerticalBarChart = (container, config, data, options = {}) =>
     const y = d3.scaleLinear().domain([0, maxVal * 1.1]).nice().range([height, 0]);
     const colorScale = sharedColorScale || d3.scaleOrdinal().domain(stackKeys).range(colors);
 
-    renderHorizontalGrid(gridGroup, y, width, showGrid);
+    renderHorizontalGrid(gridGroup, y, width, showGrid, height);
     barsGroup.selectAll('*').remove();
     labelsGroup.selectAll('*').remove();
 
@@ -308,7 +309,7 @@ export const createVerticalBarChart = (container, config, data, options = {}) =>
     const colorScale = sharedColorScale || d3.scaleOrdinal().domain(stackKeys).range(colors);
     const stack = d3.stack().keys(stackKeys).order(d3.stackOrderNone).offset(d3.stackOffsetNone);
 
-    renderHorizontalGrid(gridGroup, y, width, showGrid);
+    renderHorizontalGrid(gridGroup, y, width, showGrid, height);
     barsGroup.selectAll('*').remove();
     labelsGroup.selectAll('*').remove();
 
@@ -430,15 +431,16 @@ export const createVerticalBarChart = (container, config, data, options = {}) =>
 
         if (activeYScale) {
           const zy = t.rescaleY(activeYScale);
-          yAxisGroup.call(d3.axisLeft(zy).ticks(5).tickFormat(smartAxisFormat));
+          const zoomYTicks = Math.max(2, Math.min(5, Math.floor(height / 40)));
+          yAxisGroup.call(d3.axisLeft(zy).ticks(zoomYTicks).tickFormat(smartAxisFormat));
           yAxisGroup.selectAll('text').style('fill', STYLES.axis.textColor).style('font-size', STYLES.axis.fontSize);
           yAxisGroup.selectAll('line, path').style('stroke', STYLES.axis.lineColor);
           gridGroup.selectAll('*').remove();
           if (showGrid) {
-            gridGroup.selectAll('.grid-line').data(zy.ticks(5)).enter().append('line')
+            gridGroup.selectAll('.grid-line').data(zy.ticks(zoomYTicks)).enter().append('line')
               .attr('class', 'grid-line').attr('x1', 0).attr('x2', width)
               .attr('y1', d => zy(d)).attr('y2', d => zy(d))
-              .style('stroke', STYLES.grid.lineColor).style('stroke-dasharray', STYLES.grid.dashArray);
+              .style('stroke', STYLES.grid.lineColor);
           }
         }
 

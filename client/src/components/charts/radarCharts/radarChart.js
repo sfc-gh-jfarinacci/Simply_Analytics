@@ -6,7 +6,11 @@ export function createRadarChart(container, data, {
   fillOpacity = 0.2,
 }) {
   const size = Math.min(width, height);
-  const margin = 50;
+  const isCompact = width < 250 || height < 180;
+  const isTiny = width < 160 || height < 120;
+  let margin = 50;
+  if (isTiny) margin = 10;
+  else if (isCompact) margin = 20;
   const radius = (size - margin * 2) / 2;
   if (radius <= 0 || !data.length) return;
 
@@ -57,7 +61,7 @@ export function createRadarChart(container, data, {
 
     const lx = Math.cos(angle) * (radius + 16);
     const ly = Math.sin(angle) * (radius + 16);
-    g.selectAll(`text.axis-label-${i}`).data([null]).join('text')
+    g.selectAll(`text.axis-label-${i}`).data(isTiny ? [] : [null]).join('text')
       .attr('class', `axis-label-${i}`)
       .attr('x', lx).attr('y', ly)
       .attr('text-anchor', Math.abs(lx) < 5 ? 'middle' : (lx > 0 ? 'start' : 'end'))

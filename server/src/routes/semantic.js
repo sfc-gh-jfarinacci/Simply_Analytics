@@ -873,9 +873,13 @@ semanticRoutes.post('/pivot', async (req, res, next) => {
         
         const field = `"${f.field}"`;
         const op = sanitizeOperator(f.operator);
+
+        // Normalize: allow values array as fallback for value/value2
+        const val = f.value !== undefined ? f.value : f.values?.[0];
+        const val2 = f.value2 !== undefined ? f.value2 : f.values?.[1];
         
         // Handle array of values (multiselect filter / IN operator)
-        if ((op === 'IN' || f.values) && Array.isArray(f.values) && f.values.length > 0) {
+        if ((op === 'IN' || (f.values && !['BETWEEN', 'LIKE', '=', 'NOT IN'].includes(op))) && Array.isArray(f.values) && f.values.length > 0) {
           const escapedValues = f.values.map(v => `'${String(v).replace(/'/g, "''")}'`);
           return `${field} IN (${escapedValues.join(', ')})`;
         }
@@ -899,29 +903,34 @@ semanticRoutes.post('/pivot', async (req, res, next) => {
         }
         
         // Handle BETWEEN
-        if (op === 'BETWEEN' && f.value !== undefined && f.value2 !== undefined) {
-          const val1 = formatValue(f.value, f.operator);
-          const val2 = formatValue(f.value2, f.operator);
-          return `${field} BETWEEN ${val1} AND ${val2}`;
+        if (op === 'BETWEEN' && val !== undefined && val2 !== undefined) {
+          const v1 = formatValue(val, f.operator);
+          const v2 = formatValue(val2, f.operator);
+          return `${field} BETWEEN ${v1} AND ${v2}`;
         }
         
         // Handle LIKE variants
-        if (op === 'LIKE' && f.value !== undefined) {
-          return `${field} ILIKE '%${String(f.value).replace(/'/g, "''")}%'`;
+        if (op === 'LIKE' && val !== undefined) {
+          return `${field} ILIKE '%${String(val).replace(/'/g, "''")}%'`;
         }
-        if (op === 'STARTS_WITH' && f.value !== undefined) {
-          return `${field} ILIKE '${String(f.value).replace(/'/g, "''")}%'`;
+        if (op === 'STARTS_WITH' && val !== undefined) {
+          return `${field} ILIKE '${String(val).replace(/'/g, "''")}%'`;
         }
-        if (op === 'ENDS_WITH' && f.value !== undefined) {
-          return `${field} ILIKE '%${String(f.value).replace(/'/g, "''")}'`;
+        if (op === 'ENDS_WITH' && val !== undefined) {
+          return `${field} ILIKE '%${String(val).replace(/'/g, "''")}'`;
         }
-        if (op === 'NOT_LIKE' && f.value !== undefined) {
-          return `${field} NOT ILIKE '%${String(f.value).replace(/'/g, "''")}%'`;
+        if (op === 'NOT_LIKE' && val !== undefined) {
+          return `${field} NOT ILIKE '%${String(val).replace(/'/g, "''")}%'`;
+        }
+
+        // Handle equality
+        if (op === '=' && val !== undefined) {
+          return `${field} = ${formatValue(val, f.operator)}`;
         }
         
         // Handle standard comparison operators
-        if (f.value !== undefined) {
-          const value = formatValue(f.value, f.operator);
+        if (val !== undefined) {
+          const value = formatValue(val, f.operator);
           return `${field} ${op} ${value}`;
         }
         

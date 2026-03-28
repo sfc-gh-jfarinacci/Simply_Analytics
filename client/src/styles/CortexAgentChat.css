@@ -1,6 +1,5 @@
 /* =============================================================
    Cortex Agent Chat – FAB + Chat Panel
-   Respects light / dark theme via CSS custom properties
    ============================================================= */
 
 /* ---- Floating Action Button ---- */
@@ -11,30 +10,26 @@
   z-index: 9999;
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: 16px;
   border: none;
-  background: var(--gradient-primary, linear-gradient(135deg, #0ea5e9, #7c3aed));
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 4px 16px rgba(14, 165, 233, 0.35),
-    0 2px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 12px rgba(14, 165, 233, 0.3), 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease;
   animation: cortexFabIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .cortex-chat-fab:hover {
-  transform: scale(1.1);
-  box-shadow:
-    0 6px 24px rgba(14, 165, 233, 0.45),
-    0 3px 10px rgba(0, 0, 0, 0.25);
+  transform: scale(1.08);
+  box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35), 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .cortex-chat-fab:active {
-  transform: scale(0.94);
+  transform: scale(0.95);
 }
 
 .cortex-chat-fab .fab-icon {
@@ -52,16 +47,16 @@
   bottom: 24px;
   right: 24px;
   z-index: 10000;
-  width: 400px;
-  height: 580px;
+  width: 420px;
+  height: 600px;
   max-height: calc(100vh - 60px);
   background: var(--bg-primary);
-  border: 1px solid var(--border-secondary);
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.1));
   border-radius: 20px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: var(--shadow-xl), 0 0 40px rgba(14, 165, 233, 0.04);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15), 0 2px 12px rgba(0, 0, 0, 0.08);
   animation: cortexPanelIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
@@ -76,8 +71,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  background: var(--gradient-card);
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.08));
   flex-shrink: 0;
 }
 
@@ -89,8 +83,7 @@
 
 .cortex-chat-logo {
   font-size: 17px;
-  color: var(--accent-primary);
-  filter: drop-shadow(0 0 6px rgba(14, 165, 233, 0.4));
+  color: #38bdf8;
 }
 
 .cortex-chat-title {
@@ -117,7 +110,7 @@
   align-items: center;
   justify-content: center;
   font-size: 15px;
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .cortex-chat-header-btn:hover {
@@ -132,7 +125,7 @@
   padding: 20px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   scroll-behavior: smooth;
 }
 
@@ -145,8 +138,8 @@
 }
 
 .cortex-chat-messages::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 4px;
 }
 
 /* ---- Welcome screen ---- */
@@ -157,37 +150,31 @@
   justify-content: center;
   flex: 1;
   text-align: center;
-  gap: 6px;
+  gap: 4px;
   padding: 32px 24px;
   animation: cortexFadeIn 0.4s ease both 0.1s;
 }
 
 .cortex-welcome-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(124, 58, 237, 0.12));
-  border: 1px solid rgba(14, 165, 233, 0.15);
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(99, 102, 241, 0.1));
+  border: 1px solid rgba(14, 165, 233, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 14px;
-  animation: cortexIconPulse 3s ease-in-out infinite;
+  margin-bottom: 16px;
 }
 
 .cortex-welcome-stars {
-  font-size: 26px;
-  background: linear-gradient(135deg, #0ea5e9, #a78bfa, #0ea5e9);
+  font-size: 24px;
+  background: linear-gradient(135deg, #0ea5e9, #38bdf8, #6366f1);
   background-size: 200% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: cortexShimmer 3s ease-in-out infinite;
-}
-
-@keyframes cortexIconPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); }
-  50%      { box-shadow: 0 0 20px 2px rgba(14, 165, 233, 0.1); }
 }
 
 @keyframes cortexShimmer {
@@ -208,18 +195,18 @@
   font-weight: 600;
   margin: 4px 0 0;
   line-height: 1.4;
-  background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 30%, #a78bfa 70%, #7c3aed 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 30%, #818cf8 70%, #6366f1 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .cortex-welcome-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
-  margin: 8px 0 0;
-  line-height: 1.5;
-  max-width: 240px;
+  margin: 10px 0 0;
+  line-height: 1.6;
+  max-width: 260px;
 }
 
 @keyframes cortexFadeIn {
@@ -244,16 +231,16 @@
 }
 
 .cortex-msg-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-border);
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  color: var(--accent-primary);
+  font-size: 13px;
+  color: #38bdf8;
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -263,21 +250,20 @@
   padding: 10px 14px;
   border-radius: 16px;
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.6;
   word-break: break-word;
 }
 
 .cortex-chat-msg-user .cortex-msg-bubble {
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
   color: #fff;
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 6px;
 }
 
 .cortex-chat-msg-assistant .cortex-msg-bubble {
-  background: var(--bg-secondary);
+  background: var(--bg-secondary, rgba(148, 163, 184, 0.06));
   color: var(--text-primary);
-  border: 1px solid var(--border-primary);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: 6px;
 }
 
 .cortex-msg-text {
@@ -290,7 +276,7 @@
 }
 
 .cortex-link {
-  color: var(--accent-primary);
+  color: #38bdf8;
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 0.15s;
@@ -298,7 +284,7 @@
 }
 
 .cortex-link:hover {
-  border-bottom-color: var(--accent-primary);
+  border-bottom-color: #38bdf8;
 }
 
 /* ---- Typing dots (initial waiting) ---- */
@@ -313,7 +299,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: #94a3b8;
   animation: cortexTypingDot 1.2s ease-in-out infinite;
 }
 
@@ -328,15 +314,15 @@
 /* ---- Thinking block (live thinking stream) ---- */
 .cortex-thinking-block {
   margin-bottom: 8px;
-  border-radius: 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.04);
+  border: 1px solid rgba(14, 165, 233, 0.08);
   overflow: hidden;
   transition: border-color 0.2s;
 }
 
 .cortex-thinking-active {
-  border-color: var(--accent-border);
+  border-color: rgba(14, 165, 233, 0.15);
 }
 
 .cortex-thinking-toggle {
@@ -344,10 +330,10 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 12px;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: #94a3b8;
   font-size: 11px;
   font-weight: 500;
   font-family: inherit;
@@ -357,7 +343,7 @@
 
 .cortex-thinking-toggle:hover {
   color: var(--text-secondary);
-  background: var(--bg-hover);
+  background: rgba(14, 165, 233, 0.04);
 }
 
 .cortex-thinking-toggle svg:first-child {
@@ -367,7 +353,7 @@
 
 .cortex-thinking-icon {
   font-size: 10px;
-  color: var(--accent-primary);
+  color: #38bdf8;
   flex-shrink: 0;
 }
 
@@ -376,10 +362,10 @@
 }
 
 .cortex-thinking-content {
-  padding: 0 10px 8px;
-  font-size: 11.5px;
+  padding: 0 12px 10px;
+  font-size: 12px;
   line-height: 1.6;
-  color: var(--text-muted);
+  color: #94a3b8;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 180px;
@@ -396,8 +382,8 @@
 }
 
 .cortex-thinking-content::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 4px;
 }
 
 /* ---- Thinking title transition ---- */
@@ -445,12 +431,12 @@
   align-items: flex-start;
   gap: 8px;
   padding: 10px 12px;
-  background: var(--trend-down-bg);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 10px;
-  font-size: 11px;
-  color: var(--accent-danger, #ef4444);
-  line-height: 1.4;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.12);
+  border-radius: 12px;
+  font-size: 12px;
+  color: #f87171;
+  line-height: 1.5;
   min-width: 0;
   overflow: hidden;
 }
@@ -472,9 +458,8 @@
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 12px 14px 14px;
-  border-top: 1px solid var(--border-primary);
-  background: var(--bg-primary);
+  padding: 12px 14px 16px;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.08));
   flex-shrink: 0;
 }
 
@@ -484,16 +469,60 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary, rgba(148, 163, 184, 0.06));
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.1));
   border-radius: 14px;
   padding: 10px 12px;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+  overflow: hidden;
 }
 
 .cortex-input-wrapper:focus-within {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 14, 165, 233), 0.1);
+  border-color: rgba(14, 165, 233, 0.4);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.06);
+}
+
+/* Rotating gradient border while streaming */
+.cortex-input-wrapper.cortex-input-streaming {
+  border-color: transparent;
+}
+
+.cortex-input-wrapper.cortex-input-streaming::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 15px;
+  background: conic-gradient(
+    from var(--cortex-border-angle, 0deg),
+    transparent 0%,
+    #0ea5e9 10%,
+    #38bdf8 25%,
+    #6366f1 40%,
+    #a78bfa 55%,
+    transparent 70%
+  );
+  animation: cortexBorderSpin 2.5s linear infinite;
+  z-index: -1;
+}
+
+.cortex-input-wrapper.cortex-input-streaming::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 13px;
+  background: var(--bg-secondary, rgba(15, 23, 42, 0.95));
+  z-index: -1;
+}
+
+@property --cortex-border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes cortexBorderSpin {
+  to { --cortex-border-angle: 360deg; }
 }
 
 .cortex-chat-input {
@@ -507,11 +536,11 @@
   resize: none;
   min-height: 20px;
   max-height: 80px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .cortex-chat-input::placeholder {
-  color: var(--text-muted);
+  color: #94a3b8;
 }
 
 .cortex-chat-input:focus {
@@ -535,15 +564,15 @@
   align-items: center;
   gap: 4px;
   padding: 3px 10px 3px 7px;
-  border-radius: 14px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.1));
+  background: transparent;
+  color: #94a3b8;
   font-size: 11px;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   white-space: nowrap;
   max-width: 180px;
   overflow: hidden;
@@ -551,19 +580,19 @@
 }
 
 .cortex-agent-chip:hover:not(:disabled) {
-  border-color: var(--accent-border);
+  border-color: rgba(14, 165, 233, 0.3);
   color: var(--text-primary);
-  background: var(--accent-bg);
+  background: rgba(14, 165, 233, 0.06);
 }
 
 .cortex-agent-chip-active {
-  background: var(--accent-bg);
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
+  background: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.3);
+  color: #38bdf8;
 }
 
 .cortex-agent-chip-active:hover:not(:disabled) {
-  color: var(--accent-primary);
+  color: #38bdf8;
 }
 
 .cortex-agent-chip:disabled {
@@ -582,7 +611,7 @@
   height: 40px;
   border-radius: 12px;
   border: none;
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
   color: #fff;
   cursor: pointer;
   display: flex;
@@ -590,7 +619,7 @@
   justify-content: center;
   font-size: 16px;
   flex-shrink: 0;
-  transition: opacity 0.2s, transform 0.15s;
+  transition: opacity 0.15s, transform 0.15s;
   box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
 }
 
@@ -603,7 +632,7 @@
 }
 
 .cortex-chat-send-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.25;
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -617,13 +646,12 @@
   to { transform: rotate(360deg); }
 }
 
-
 /* ---- Blinking cursor while streaming ---- */
 .cortex-cursor {
   display: inline-block;
   width: 2px;
-  height: 13px;
-  background: var(--accent-primary);
+  height: 14px;
+  background: #38bdf8;
   margin-left: 2px;
   vertical-align: text-bottom;
   border-radius: 1px;
@@ -635,14 +663,14 @@
   50%      { opacity: 0; }
 }
 
-/* Filter suggestions from agent responses */
+/* ---- Filter suggestions ---- */
 .cortex-filter-suggestions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
 }
 
 .cortex-filter-btn {
@@ -650,18 +678,18 @@
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  border-radius: 14px;
-  background: rgba(167, 139, 250, 0.08);
-  color: #c4b5fd;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 10px;
+  background: rgba(14, 165, 233, 0.06);
+  color: #38bdf8;
   font-size: 11px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .cortex-filter-btn:hover {
-  background: rgba(167, 139, 250, 0.18);
-  border-color: #a78bfa;
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(14, 165, 233, 0.3);
 }
 
 .cortex-filter-btn svg {
@@ -670,7 +698,7 @@
 }
 
 .cortex-filter-active {
-  color: #a78bfa !important;
+  color: #38bdf8 !important;
   position: relative;
 }
 
@@ -678,7 +706,7 @@
   position: absolute;
   top: -4px;
   right: -4px;
-  background: #7c3aed;
+  background: #0ea5e9;
   color: white;
   font-size: 9px;
   font-weight: 700;

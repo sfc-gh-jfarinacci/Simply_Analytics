@@ -13,28 +13,28 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  overflow: overlay; /* Overlay scrollbars - don't take space */
-  border-radius: 6px;
+  overflow: overlay;
+  border-radius: 8px;
 }
 
-/* Thin overlay scrollbars - only visible on hover */
+/* Thin overlay scrollbars */
 .data-table-wrapper::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
 
 .data-table-wrapper:hover::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 .data-table-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.4);
-  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
 }
 
 .data-table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.6);
+  background: rgba(148, 163, 184, 0.4);
 }
 
 .data-table-wrapper::-webkit-scrollbar-track {
@@ -59,18 +59,18 @@
 }
 
 .data-table-header-row {
-  height: 38px;
+  height: 36px;
 }
 
 .data-table-header-cell {
-  padding: 10px 14px;
+  padding: 8px 14px;
   text-align: center;
   font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
-  border-right: 1px solid;
+  border-right: none;
 }
 
 .data-table-header-cell:last-child {
@@ -89,7 +89,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 300px;
-  border-right: 1px solid;
+  border-right: none;
 }
 
 .data-table-cell:last-child {
@@ -126,7 +126,7 @@
 }
 
 .cell-null {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .cell-text {
@@ -178,113 +178,109 @@
    DARK THEME
    ============================================================ */
 .data-table-container.dark {
-  background: #0e0e14;
+  background: transparent;
 }
 
 .data-table-container.dark .data-table-wrapper {
-  background: #0e0e14;
-  border: 1px solid #252530;
+  background: transparent;
+  border: none;
 }
 
 /* Dark Header */
 .data-table-container.dark .data-table-header-cell {
-  background: #1a1a24;
-  color: #c0c0d0;
-  border-bottom: 2px solid #303040;
-  border-right-color: #252530;
+  background: rgba(148, 163, 184, 0.06);
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .data-table-container.dark .data-table-header-cell.header-row-field {
-  color: #80c8e0;
-  background: #1a1a24;
+  color: #94a3b8;
   font-weight: 600;
 }
 
 .data-table-container.dark .data-table-header-cell.header-measure {
-  color: #e0e0f0;
+  color: #94a3b8;
   font-weight: 500;
 }
 
 .data-table-container.dark .data-table-header-cell.header-group {
-  background: #202030;
-  color: #00d4ff;
-  font-weight: 700;
-  font-size: 12px;
-  border-bottom: 2px solid #00a0c0;
+  background: rgba(148, 163, 184, 0.08);
+  color: #a78bfa;
+  font-weight: 600;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.2);
 }
 
 .data-table-container.dark .data-table-header-cell.header-group.level-0 {
-  background: #1a2030;
+  background: rgba(99, 102, 241, 0.06);
+  color: #818cf8;
 }
 
 .data-table-container.dark .data-table-header-cell.header-group.level-1 {
-  background: #182820;
-  color: #40d0a0;
-  border-bottom-color: #30a080;
+  background: rgba(52, 211, 153, 0.06);
+  color: #34d399;
+  border-bottom-color: rgba(52, 211, 153, 0.2);
 }
 
 .data-table-container.dark .data-table-header-cell.header-group.level-2 {
-  background: #282010;
-  color: #f0c040;
-  border-bottom-color: #c0a030;
+  background: rgba(251, 191, 36, 0.06);
+  color: #fbbf24;
+  border-bottom-color: rgba(251, 191, 36, 0.2);
 }
 
-/* Dark Rows - Clear alternating colors */
+/* Dark Rows */
 .data-table-container.dark .data-table-row {
-  color: #e0e0e8;
+  color: #e2e8f0;
 }
 
 .data-table-container.dark .data-table-row.odd {
-  background: #0e0e14;
+  background: transparent;
 }
 
 .data-table-container.dark .data-table-row.odd .data-table-cell {
-  background: #0e0e14;
-  border-bottom: 1px solid #1e1e28;
-  border-right-color: #1a1a22;
+  background: transparent;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
 }
 
 .data-table-container.dark .data-table-row.even {
-  background: #15151c;
+  background: rgba(148, 163, 184, 0.03);
 }
 
 .data-table-container.dark .data-table-row.even .data-table-cell {
-  background: #15151c;
-  border-bottom: 1px solid #1e1e28;
-  border-right-color: #1e1e28;
+  background: rgba(148, 163, 184, 0.03);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
 }
 
-/* Dark Hover - Clear highlight */
+/* Dark Hover */
 .data-table-container.dark .data-table-row:hover {
-  background: #1e2530;
+  background: rgba(99, 102, 241, 0.08);
 }
 
 .data-table-container.dark .data-table-row:hover .data-table-cell {
-  background: #1e2530;
-  border-bottom-color: #2a3540;
-  border-right-color: #252a35;
+  background: rgba(99, 102, 241, 0.08);
+  border-bottom-color: rgba(99, 102, 241, 0.12);
 }
 
 /* Dark cell colors */
 .data-table-container.dark .cell-measure {
-  color: #d0d0e0;
+  color: #cbd5e1;
 }
 
 .data-table-container.dark .cell-row-header {
-  color: #60c8e8;
+  color: #e2e8f0;
 }
 
 .data-table-container.dark .data-table-empty {
-  color: #666;
+  color: #64748b;
 }
 
 /* Dark scrollbar */
 .data-table-container.dark .data-table-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(148, 163, 184, 0.15);
 }
 
 .data-table-container.dark .data-table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(148, 163, 184, 0.3);
 }
 
 /* ============================================================
@@ -296,55 +292,54 @@
 
 .data-table-container.light .data-table-wrapper {
   background: #ffffff;
-  border: 1px solid #e0e0e5;
+  border: none;
 }
 
 /* Light Header */
 .data-table-container.light .data-table-header-cell {
-  background: #f0f0f4;
-  color: #404050;
-  border-bottom: 2px solid #d0d0d8;
-  border-right-color: #dcdce4;
+  background: #f8fafc;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .data-table-container.light .data-table-header-cell.header-row-field {
-  color: #0066a0;
-  background: #f0f0f4;
+  color: #475569;
   font-weight: 600;
 }
 
 .data-table-container.light .data-table-header-cell.header-measure {
-  color: #303040;
+  color: #64748b;
   font-weight: 500;
 }
 
 .data-table-container.light .data-table-header-cell.header-group {
-  background: #e0e8f0;
-  color: #0066a0;
-  font-weight: 700;
-  font-size: 12px;
-  border-bottom: 2px solid #0088c0;
+  background: #f1f5f9;
+  color: #6366f1;
+  font-weight: 600;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
 }
 
 .data-table-container.light .data-table-header-cell.header-group.level-0 {
-  background: #d8e8f4;
+  background: #eef2ff;
+  color: #6366f1;
 }
 
 .data-table-container.light .data-table-header-cell.header-group.level-1 {
-  background: #d8f0e4;
-  color: #047857;
-  border-bottom-color: #10a070;
+  background: #ecfdf5;
+  color: #059669;
+  border-bottom-color: rgba(5, 150, 105, 0.2);
 }
 
 .data-table-container.light .data-table-header-cell.header-group.level-2 {
-  background: #f4e8d0;
-  color: #a04000;
-  border-bottom-color: #c08020;
+  background: #fffbeb;
+  color: #d97706;
+  border-bottom-color: rgba(217, 119, 6, 0.2);
 }
 
-/* Light Rows - Clear alternating colors */
+/* Light Rows */
 .data-table-container.light .data-table-row {
-  color: #1a1a28;
+  color: #1e293b;
 }
 
 .data-table-container.light .data-table-row.odd {
@@ -353,51 +348,48 @@
 
 .data-table-container.light .data-table-row.odd .data-table-cell {
   background: #ffffff;
-  border-bottom: 1px solid #e8e8ee;
-  border-right-color: #eaeaef;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .data-table-container.light .data-table-row.even {
-  background: #f6f6f9;
+  background: #f8fafc;
 }
 
 .data-table-container.light .data-table-row.even .data-table-cell {
-  background: #f6f6f9;
-  border-bottom: 1px solid #e8e8ee;
-  border-right-color: #e4e4ea;
+  background: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-/* Light Hover - Clear highlight */
+/* Light Hover */
 .data-table-container.light .data-table-row:hover {
-  background: #e8f0f8;
+  background: #eef2ff;
 }
 
 .data-table-container.light .data-table-row:hover .data-table-cell {
-  background: #e8f0f8;
-  border-bottom-color: #d0e0f0;
-  border-right-color: #d8e4f0;
+  background: #eef2ff;
+  border-bottom-color: #e0e7ff;
 }
 
 /* Light cell colors */
 .data-table-container.light .cell-measure {
-  color: #2a2a38;
+  color: #334155;
 }
 
 .data-table-container.light .cell-row-header {
-  color: #0066a0;
+  color: #1e293b;
 }
 
 .data-table-container.light .data-table-empty {
-  color: #888;
+  color: #94a3b8;
 }
 
 /* Light scrollbar */
 .data-table-container.light .data-table-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .data-table-container.light .data-table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 /* ========== Totals Row ========== */
@@ -408,15 +400,15 @@
 }
 
 .data-table-totals-row {
-  height: 38px;
+  height: 36px;
 }
 
 .data-table-totals-cell {
-  padding: 10px 14px;
-  font-weight: 700;
+  padding: 8px 14px;
+  font-weight: 600;
   font-size: 12px;
   white-space: nowrap;
-  border-right: 1px solid;
+  border-right: none;
 }
 
 .data-table-totals-cell:last-child {
@@ -424,34 +416,32 @@
 }
 
 .totals-label {
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   font-size: 11px;
 }
 
 /* Dark totals */
 .data-table-container.dark .data-table-totals-cell {
-  background: #1a1a24;
-  border-top: 2px solid #303040;
-  border-right-color: #252530;
-  color: #e0e0f0;
+  background: rgba(148, 163, 184, 0.06);
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
 }
 
 .data-table-container.dark .totals-label {
-  color: #80c8e0;
+  color: #94a3b8;
 }
 
 /* Light totals */
 .data-table-container.light .data-table-totals-cell {
-  background: #f0f0f4;
-  border-top: 2px solid #d0d0d8;
-  border-right-color: #dcdce4;
-  color: #2a2a38;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  color: #1e293b;
 }
 
 .data-table-container.light .totals-label {
-  color: #0066a0;
+  color: #475569;
 }
 
 /* ========== Smooth Theme Transition ========== */
@@ -461,10 +451,9 @@
 .data-table-row,
 .data-table-cell,
 .data-table-totals-cell {
-  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
-/* Faster hover for responsiveness */
 .data-table-row:hover,
 .data-table-row:hover .data-table-cell {
   transition: background-color 0.1s ease;

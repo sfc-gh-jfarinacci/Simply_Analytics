@@ -7,6 +7,12 @@ const toFieldName = (v) => {
   return v.name ?? v.value ?? v.label ?? null;
 };
 
+const formatDisplayName = (name, aliases) => {
+  if (!name) return '';
+  if (aliases?.[name]) return aliases[name];
+  return String(name).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
 const GaugeChartWrapper = ({ data, config, query }) => {
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -44,7 +50,7 @@ const GaugeChartWrapper = ({ data, config, query }) => {
     createGaugeChart(containerRef.current, value, {
       width: dimensions.width, height: dimensions.height,
       minValue: minVal, maxValue: maxVal,
-      label: measureField,
+      label: formatDisplayName(measureField, config?.columnAliases),
       colorScheme: config?.colorScheme || 'blues',
       colors: config?.colors,
       animate: shouldAnimate,
