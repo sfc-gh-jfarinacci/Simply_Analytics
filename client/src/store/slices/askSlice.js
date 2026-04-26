@@ -1,14 +1,12 @@
 const ASK_SESSION_KEY = 'ask_session';
 
-function saveSession(workspaceId, conversationId, mode, connectionId, viewFqn, agentFqn) {
+function saveSession(workspaceId, conversationId, connectionId, viewFqn) {
   try {
     sessionStorage.setItem(ASK_SESSION_KEY, JSON.stringify({
       workspaceId: workspaceId || null,
       conversationId: conversationId || null,
-      mode: mode || 'semantic',
       connectionId: connectionId || null,
       viewFqn: viewFqn || null,
-      agentFqn: agentFqn || null,
     }));
   } catch { /* ignore */ }
 }
@@ -28,14 +26,11 @@ export const createAskSlice = (set, get) => ({
   askActiveConversationId: null,
   askMessages: [],
   askIsStreaming: false,
-  askMode: 'semantic',
 
   askWorkspaceConnections: [],
   askActiveConnectionId: null,
   askWorkspaceViews: [],
-  askWorkspaceAgents: [],
   askActiveViewFqn: null,
-  askActiveAgentFqn: null,
 
   checkAskAccess: async () => {
     const role = get().currentRole;
@@ -58,8 +53,7 @@ export const createAskSlice = (set, get) => ({
   setAskWorkspaces: (workspaces) => set({ askWorkspaces: workspaces }),
 
   setAskActiveWorkspace: (workspace) => {
-    const mode = get().askMode;
-    saveSession(workspace?.id, null, mode, null, null, null);
+    saveSession(workspace?.id, null, null, null);
     set({
       askActiveWorkspace: workspace,
       askActiveConversationId: null,
@@ -67,13 +61,11 @@ export const createAskSlice = (set, get) => ({
       askWorkspaceConnections: [],
       askActiveConnectionId: null,
       askWorkspaceViews: [],
-      askWorkspaceAgents: [],
       askActiveViewFqn: null,
-      askActiveAgentFqn: null,
     });
   },
 
-  setAskWorkspaceResources: (connections, views, agents) => {
+  setAskWorkspaceResources: (connections, views) => {
     const state = get();
     const saved = loadSession();
 
@@ -88,43 +80,30 @@ export const createAskSlice = (set, get) => ({
       || (savedViewStillValid ? saved.viewFqn : null)
       || (views?.length ? views[0].semantic_view_fqn : null);
 
-    const savedAgentStillValid = saved.agentFqn && (agents || []).some(a => a.agent_fqn === saved.agentFqn);
-    const activeAgentFqn = state.askActiveAgentFqn
-      || (savedAgentStillValid ? saved.agentFqn : null)
-      || (agents?.length ? agents[0].agent_fqn : null);
-
     set({
       askWorkspaceConnections: conns,
       askActiveConnectionId: activeConnId,
       askWorkspaceViews: views || [],
-      askWorkspaceAgents: agents || [],
       askActiveViewFqn: activeViewFqn,
-      askActiveAgentFqn: activeAgentFqn,
     });
   },
 
   setAskActiveConnectionId: (id) => {
     set({ askActiveConnectionId: id });
     const s = get();
-    saveSession(s.askActiveWorkspace?.id, s.askActiveConversationId, s.askMode, id, s.askActiveViewFqn, s.askActiveAgentFqn);
+    saveSession(s.askActiveWorkspace?.id, s.askActiveConversationId, id, s.askActiveViewFqn);
   },
   setAskActiveViewFqn: (fqn) => {
     set({ askActiveViewFqn: fqn });
     const s = get();
-    saveSession(s.askActiveWorkspace?.id, s.askActiveConversationId, s.askMode, s.askActiveConnectionId, fqn, s.askActiveAgentFqn);
-  },
-  setAskActiveAgentFqn: (fqn) => {
-    set({ askActiveAgentFqn: fqn });
-    const s = get();
-    saveSession(s.askActiveWorkspace?.id, s.askActiveConversationId, s.askMode, s.askActiveConnectionId, s.askActiveViewFqn, fqn);
+    saveSession(s.askActiveWorkspace?.id, s.askActiveConversationId, s.askActiveConnectionId, fqn);
   },
 
   setAskConversations: (conversations) => set({ askConversations: conversations }),
 
   setAskActiveConversation: (id, messages) => {
     const ws = get().askActiveWorkspace;
-    const mode = get().askMode;
-    saveSession(ws?.id, id, mode);
+    saveSession(ws?.id, id);
     set(s => ({
       askActiveConversationId: id,
       askMessages: messages !== undefined ? messages : s.askMessages,
@@ -141,24 +120,13 @@ export const createAskSlice = (set, get) => ({
 
   removeAskConversation: (id) => set(s => {
     const wasActive = s.askActiveConversationId === id;
-    if (wasActive) saveSession(s.askActiveWorkspace?.id, null, s.askMode);
+    if (wasActive) saveSession(s.askActiveWorkspace?.id, null);
     return {
       askConversations: s.askConversations.filter(c => c.id !== id),
       askActiveConversationId: wasActive ? null : s.askActiveConversationId,
       askMessages: wasActive ? [] : s.askMessages,
     };
   }),
-
-  setAskMode: (mode) => {
-    const ws = get().askActiveWorkspace;
-    saveSession(ws?.id, null, mode);
-    set({
-      askMode: mode,
-      askActiveConversationId: null,
-      askMessages: [],
-      askConversations: [],
-    });
-  },
 
   addAskMessage: (msg) => set(s => ({ askMessages: [...s.askMessages, msg] })),
 

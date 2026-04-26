@@ -74,6 +74,7 @@ const DashboardAiBuilder = ({ isOpen, onClose, onDashboardGenerated, onWidgetGen
     currentTabId,
     semanticViewMetadataCache,
     updateDashboard,
+    activeWorkspace,
   } = useAppStore();
 
   const [prompt, setPrompt] = useState('');
@@ -136,6 +137,7 @@ const DashboardAiBuilder = ({ isOpen, onClose, onDashboardGenerated, onWidgetGen
         connectionId: currentDashboard?.connection_id,
         warehouse: currentDashboard?.warehouse,
         role: currentDashboard?.role,
+        workspaceId: activeWorkspace?.id,
       };
 
       let data;
@@ -154,8 +156,6 @@ const DashboardAiBuilder = ({ isOpen, onClose, onDashboardGenerated, onWidgetGen
             tabs: currentDashboard.tabs,
             filters: currentDashboard.filters,
             semanticViewsReferenced: currentDashboard.semanticViewsReferenced,
-            cortexAgentsEnabled: currentDashboard.cortexAgentsEnabled,
-            cortexAgents: currentDashboard.cortexAgents,
             customColorSchemes: currentDashboard.customColorSchemes,
           } : undefined,
         });

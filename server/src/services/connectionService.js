@@ -331,25 +331,10 @@ export async function getSnowflakeResources(connectionId, userId, selectedRole =
       log('Semantic views query failed (may not have access):', e.message);
     }
 
-    let cortexAgents = [];
-    try {
-      const cortexResult = await executeQuery(connection, 'SHOW AGENTS IN ACCOUNT');
-      cortexAgents = cortexResult.rows.map((row) => ({
-        name: row.name,
-        database: row.database_name,
-        schema: row.schema_name,
-        fullyQualifiedName: `${row.database_name}.${row.schema_name}.${row.name}`,
-      }));
-      log(`Found ${cortexAgents.length} cortex agents for role ${selectedRole}`);
-    } catch (e) {
-      log('Cortex agents query failed (may not have access):', e.message);
-    }
-
     return {
       roles,
       warehouses,
       semanticViews,
-      cortexAgents,
     };
   } finally {
     connection.destroy();

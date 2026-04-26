@@ -1,5 +1,6 @@
 import yaml from 'js-yaml';
 import { buildQueryDirect } from '../utils/queryBuilder.js';
+import { complete as llmComplete, completeStream as llmStream, stripCodeFences } from './llmProvider.js';
 
 const DASHBOARD_SCHEMA_PROMPT = `You are an expert dashboard builder for the Simply Analytics platform.
 You generate dashboard definitions in YAML format based on natural language descriptions.
@@ -73,8 +74,6 @@ tabs:
         chartQuery: {}
 
 filters: []
-cortexAgentsEnabled: false
-cortexAgents: []
 customColorSchemes: []
 \`\`\`
 
@@ -365,49 +364,27 @@ function buildSemanticViewContext(metadata) {
   return lines.join('\n');
 }
 
-function escapeForSnowflake(str) {
-  return str.replace(/'/g, "''");
-}
-
-export async function generateDashboard(connection, { prompt, semanticViewMetadata, model = 'claude-sonnet-4-6', maxTokens = 4096 }) {
+export async function generateDashboard(connection, { prompt, semanticViewMetadata, model = 'claude-sonnet-4-6', maxTokens = 4096, provider, apiKey, endpointUrl, connWithCreds }) {
   const viewContext = Array.isArray(semanticViewMetadata)
     ? semanticViewMetadata.map(buildSemanticViewContext).join('\n\n')
     : buildSemanticViewContext(semanticViewMetadata);
 
   const systemPrompt = `${DASHBOARD_SCHEMA_PROMPT}\n\n${viewContext}`;
 
-  const sql = `
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
-      '${model}',
-      [
-        {'role': 'system', 'content': '${escapeForSnowflake(systemPrompt)}'},
-        {'role': 'user', 'content': '${escapeForSnowflake(prompt)}'}
-      ],
-      {'temperature': 0.3, 'max_tokens': ${maxTokens}}
-    ) as response
-  `;
-
-  const result = await executeQuery(connection, sql);
-  let response = result[0]?.RESPONSE || result[0]?.response;
-
-  if (response && typeof response === 'object') {
-    if (response.choices?.[0]) {
-      response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-    } else if (response.content) {
-      response = response.content;
-    }
-  }
-
-  if (typeof response !== 'string') {
-    response = JSON.stringify(response);
-  }
+  const response = await llmComplete({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ],
+    model, maxTokens, temperature: 0.3, provider, apiKey, connWithCreds, endpointUrl,
+  });
 
   const cleaned = stripCodeFences(response);
   const parsed = yaml.load(cleaned);
   return validateAndNormalizeDashboard(parsed);
 }
 
-export async function generateWidget(connection, { prompt, semanticViewMetadata, existingWidgets, position, model = 'claude-sonnet-4-6', maxTokens = 2048 }) {
+export async function generateWidget(connection, { prompt, semanticViewMetadata, existingWidgets, position, model = 'claude-sonnet-4-6', maxTokens = 2048, provider, apiKey, endpointUrl, connWithCreds }) {
   const viewContext = buildSemanticViewContext(semanticViewMetadata);
 
   let positionHint = '';
@@ -420,38 +397,20 @@ export async function generateWidget(connection, { prompt, semanticViewMetadata,
 
   const systemPrompt = `${WIDGET_SCHEMA_PROMPT}\n\n${viewContext}${positionHint}`;
 
-  const sql = `
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
-      '${model}',
-      [
-        {'role': 'system', 'content': '${escapeForSnowflake(systemPrompt)}'},
-        {'role': 'user', 'content': '${escapeForSnowflake(prompt)}'}
-      ],
-      {'temperature': 0.3, 'max_tokens': ${maxTokens}}
-    ) as response
-  `;
-
-  const result = await executeQuery(connection, sql);
-  let response = result[0]?.RESPONSE || result[0]?.response;
-
-  if (response && typeof response === 'object') {
-    if (response.choices?.[0]) {
-      response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-    } else if (response.content) {
-      response = response.content;
-    }
-  }
-
-  if (typeof response !== 'string') {
-    response = JSON.stringify(response);
-  }
+  const response = await llmComplete({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ],
+    model, maxTokens, temperature: 0.3, provider, apiKey, connWithCreds, endpointUrl,
+  });
 
   const cleaned = stripCodeFences(response);
   const parsed = yaml.load(cleaned);
   return validateAndNormalizeWidget(parsed);
 }
 
-export async function modifyDashboard(connection, { prompt, currentYaml, semanticViewMetadata, model = 'claude-sonnet-4-6', maxTokens = 4096 }) {
+export async function modifyDashboard(connection, { prompt, currentYaml, semanticViewMetadata, model = 'claude-sonnet-4-6', maxTokens = 4096, provider, apiKey, endpointUrl, connWithCreds }) {
   const viewContext = Array.isArray(semanticViewMetadata)
     ? semanticViewMetadata.map(buildSemanticViewContext).join('\n\n')
     : buildSemanticViewContext(semanticViewMetadata);
@@ -472,31 +431,13 @@ ${currentYamlStr}
 
 Return the COMPLETE modified YAML (not just the changed parts).`;
 
-  const sql = `
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
-      '${model}',
-      [
-        {'role': 'system', 'content': '${escapeForSnowflake(modifyPrompt)}'},
-        {'role': 'user', 'content': '${escapeForSnowflake(prompt)}'}
-      ],
-      {'temperature': 0.3, 'max_tokens': ${maxTokens}}
-    ) as response
-  `;
-
-  const result = await executeQuery(connection, sql);
-  let response = result[0]?.RESPONSE || result[0]?.response;
-
-  if (response && typeof response === 'object') {
-    if (response.choices?.[0]) {
-      response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-    } else if (response.content) {
-      response = response.content;
-    }
-  }
-
-  if (typeof response !== 'string') {
-    response = JSON.stringify(response);
-  }
+  const response = await llmComplete({
+    messages: [
+      { role: 'system', content: modifyPrompt },
+      { role: 'user', content: prompt },
+    ],
+    model, maxTokens, temperature: 0.3, provider, apiKey, connWithCreds, endpointUrl,
+  });
 
   const cleaned = stripCodeFences(response);
   const parsed = yaml.load(cleaned);
@@ -542,8 +483,6 @@ function validateAndNormalizeDashboard(parsed) {
     parsed.semanticViewsReferenced = Array.from(viewSet.values());
   }
 
-  if (parsed.cortexAgentsEnabled === undefined) parsed.cortexAgentsEnabled = false;
-  if (!parsed.cortexAgents) parsed.cortexAgents = [];
   if (!parsed.customColorSchemes) parsed.customColorSchemes = [];
 
   return parsed;
@@ -632,89 +571,96 @@ function executeQuery(connection, sql) {
 // AGENT TOOL DEFINITIONS & EXECUTION
 // ============================================================================
 
-const AGENT_TOOLS = [
+// OpenAI-format tool definitions for native tool calling
+const NATIVE_TOOLS = [
   {
-    name: 'sample_data',
-    description: 'Get sample rows from a semantic view to understand what the data looks like before building a chart. Returns up to `limit` rows with the specified fields.',
-    parameters: {
-      semanticView: 'string — Fully qualified semantic view name (DATABASE.SCHEMA.VIEW)',
-      dimensions: 'string[] — Dimension field names to include',
-      measures: 'string[] — Measure field names to include (optional)',
-      limit: 'number — Max rows to return (default 5)',
+    type: 'function',
+    function: {
+      name: 'sample_data',
+      description: 'Get sample rows from a semantic view to understand what the data looks like before building a chart. Returns up to `limit` rows with the specified fields. Use filters to narrow down results.',
+      parameters: {
+        type: 'object',
+        properties: {
+          semanticView: { type: 'string', description: 'Fully qualified semantic view name (DATABASE.SCHEMA.VIEW)' },
+          dimensions: { type: 'array', items: { type: 'string' }, description: 'Dimension field names to include' },
+          measures: { type: 'array', items: { type: 'string' }, description: 'Measure field names to include (optional)' },
+          filters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+                operator: { type: 'string', enum: ['=', '!=', '>', '<', '>=', '<=', 'IN', 'NOT IN', 'LIKE', 'BETWEEN'] },
+                value: { description: 'Filter value (use with most operators and as start value for BETWEEN)' },
+                value2: { description: 'End value for BETWEEN operator' },
+                values: { type: 'array', description: 'Array of values for IN/NOT IN operators' },
+              },
+              required: ['field', 'operator'],
+            },
+            description: 'Filters to apply. For dates use BETWEEN with date strings e.g. {"field":"ORDER_DATE","operator":"BETWEEN","value":"1998-01-01","value2":"1998-12-31"}'
+          },
+          limit: { type: 'number', description: 'Max rows to return (default 5)' },
+        },
+        required: ['semanticView', 'dimensions'],
+      },
     },
   },
   {
-    name: 'check_cardinality',
-    description: 'Get the number of distinct values for a dimension field. Use this to decide whether a field is suitable for a pie chart (< 7), color encoding (< 20), or should be filtered/aggregated.',
-    parameters: {
-      semanticView: 'string — Fully qualified semantic view name',
-      field: 'string — Dimension field name to check',
+    type: 'function',
+    function: {
+      name: 'check_cardinality',
+      description: 'Get the number of distinct values for a dimension field. Use this to decide whether a field is suitable for a pie chart (< 7), color encoding (< 20), or should be filtered/aggregated.',
+      parameters: {
+        type: 'object',
+        properties: {
+          semanticView: { type: 'string', description: 'Fully qualified semantic view name' },
+          field: { type: 'string', description: 'Dimension field name to check' },
+        },
+        required: ['semanticView', 'field'],
+      },
     },
   },
   {
-    name: 'test_query',
-    description: 'Run a test query to verify that a combination of dimensions and measures returns data. Returns the row count and first few rows so you can confirm the chart will render.',
-    parameters: {
-      semanticView: 'string — Fully qualified semantic view name',
-      dimensions: 'string[] — Dimension fields',
-      measures: 'string[] — Measure fields with aggregations, e.g. [{"name":"REVENUE","aggregation":"SUM"}]',
-      limit: 'number — Max rows (default 5)',
+    type: 'function',
+    function: {
+      name: 'test_query',
+      description: 'Run a test query to verify that a combination of dimensions and measures returns data. Returns the row count and first few rows so you can confirm the chart will render.',
+      parameters: {
+        type: 'object',
+        properties: {
+          semanticView: { type: 'string', description: 'Fully qualified semantic view name' },
+          dimensions: { type: 'array', items: { type: 'string' }, description: 'Dimension fields' },
+          measures: { type: 'array', items: {}, description: 'Measure fields with aggregations, e.g. [{"name":"REVENUE","aggregation":"SUM"}]' },
+          filters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+                operator: { type: 'string', enum: ['=', '!=', '>', '<', '>=', '<=', 'IN', 'NOT IN', 'LIKE', 'BETWEEN'] },
+                value: { description: 'Filter value (use with most operators and as start value for BETWEEN)' },
+                value2: { description: 'End value for BETWEEN operator' },
+                values: { type: 'array', description: 'Array of values for IN/NOT IN operators' },
+              },
+              required: ['field', 'operator'],
+            },
+            description: 'Filters to apply. For dates use BETWEEN with date strings'
+          },
+          limit: { type: 'number', description: 'Max rows (default 5)' },
+        },
+        required: ['semanticView', 'dimensions'],
+      },
     },
   },
 ];
 
-function buildToolPromptSection() {
-  const toolDescriptions = AGENT_TOOLS.map(t => {
-    const params = Object.entries(t.parameters)
-      .map(([k, v]) => `    ${k}: ${v}`)
-      .join('\n');
-    return `- ${t.name}: ${t.description}\n  Parameters:\n${params}`;
-  }).join('\n\n');
-
-  return `## TOOLS
-You have access to tools that let you query actual data before building widgets.
-Use tools when the user asks you to build charts — sampling the data first helps you pick the right chart type and field mappings.
-
-Available tools:
-${toolDescriptions}
-
-## RESPONSE FORMAT (IMPORTANT)
-You MUST respond with valid JSON. There are TWO response types:
-
-### Type 1: Tool call (to query data before answering)
-{
-  "type": "tool_call",
-  "tool": "<tool_name>",
-  "args": { <tool parameters> },
-  "thinking": "Brief explanation of why you're calling this tool"
-}
-
-### Type 2: Final answer (when you have enough information)
-{
-  "type": "answer",
-  "message": "A short conversational explanation of what you did",
-  "action": "none" | "add_widget" | "update_widget" | "remove_widget" | "replace_dashboard",
-  "yaml": <the widget/dashboard object for the action, or null if action is "none">
-}
-
-RULES:
-- You can make at most 4 tool calls per conversation turn. After that, give your best answer.
-- MANDATORY: When building new charts, ALWAYS call sample_data first to inspect the actual data values and types before choosing a chart type. Do not guess the chart type from the field name alone.
-- After sampling, if you see geographic values (country names, state names, regions), use choropleth. If you see dates/timestamps, use line/area. If you see high cardinality text, use horizontal-bar or table. Let the DATA drive the chart type, not assumptions.
-- Use check_cardinality to verify whether a dimension has few enough distinct values for pie/donut (≤6) vs bar (≤15) vs table/treemap (>15).
-- If a tool call fails, proceed with your best guess rather than retrying.
-- For simple questions or modifications to existing widgets, skip tools and answer directly.
-- When adding multiple widgets, use "add_widget" with an array of widget objects.
-- Preserve widget IDs when updating. Only generate new IDs for new widgets.
-- Be concise in your message. 1-2 sentences max.`;
-}
-
 async function executeAgentTool(connection, toolName, args) {
+  console.log(`[executeAgentTool] ${toolName}`, JSON.stringify(args));
   const startTime = Date.now();
   try {
     switch (toolName) {
       case 'sample_data': {
-        const { semanticView, dimensions = [], measures = [], limit = 5 } = args;
+        const { semanticView, dimensions = [], measures = [], filters = [], limit = 5 } = args;
         if (!semanticView) return { error: 'semanticView is required' };
         if (dimensions.length === 0 && measures.length === 0) {
           return { error: 'At least one dimension or measure is required' };
@@ -726,6 +672,7 @@ async function executeAgentTool(connection, toolName, args) {
           semanticViewFQN: semanticView,
           dimensions,
           measures: normalizedMeasures,
+          filters: filters.map(f => ({ field: f.field, operator: f.operator || '=', value: f.value, value2: f.value2, values: f.values })),
           limit: Math.min(parseInt(limit) || 5, 20),
         });
         const rows = await executeQuery(connection, sql);
@@ -755,7 +702,7 @@ async function executeAgentTool(connection, toolName, args) {
       }
 
       case 'test_query': {
-        const { semanticView, dimensions = [], measures = [], limit = 5 } = args;
+        const { semanticView, dimensions = [], measures = [], filters = [], limit = 5 } = args;
         if (!semanticView) return { error: 'semanticView is required' };
         if (dimensions.length === 0 && measures.length === 0) {
           return { error: 'At least one dimension or measure is required' };
@@ -767,6 +714,7 @@ async function executeAgentTool(connection, toolName, args) {
           semanticViewFQN: semanticView,
           dimensions,
           measures: normalizedMeasures,
+          filters: filters.map(f => ({ field: f.field, operator: f.operator || '=', value: f.value, value2: f.value2, values: f.values })),
           limit: Math.min(parseInt(limit) || 5, 10),
         });
         const rows = await executeQuery(connection, sql);
@@ -791,66 +739,171 @@ async function executeAgentTool(connection, toolName, args) {
   }
 }
 
-const MAX_AGENT_ITERATIONS = 4;
+const MAX_TOOL_ROUNDS = 5;
 
 const CHAT_SYSTEM_PROMPT = `You are an AI assistant embedded in the Simply Analytics dashboard editor.
 You help users build and modify dashboards through conversation. You have full context of the current dashboard state.
 
 ${DASHBOARD_SCHEMA_PROMPT.replace('## RESPONSE FORMAT\nRespond with ONLY valid YAML. No markdown code fences, no explanations, no extra text.\nThe YAML must be parseable by js-yaml. Use proper indentation (2 spaces).', '')}
 
-${buildToolPromptSection()}
+## TOOL USAGE
+You have tools to query real data before building widgets:
+- sample_data(semanticView, dimensions, measures?, filters?, limit?) — get sample rows to understand the data
+- check_cardinality(semanticView, field) — count distinct values for a dimension
+- test_query(semanticView, dimensions, measures, filters?, limit?) — verify a query returns data
 
-Actions for "action" field:
-- "none": just answering a question, no changes
-- "add_widget": yaml should be a single widget object OR an array of widget objects to add. PREFER this when the user asks to create/build/add widgets.
-- "update_widget": yaml should be { widgetId: "<id>", widget: <updated widget object> }
-- "remove_widget": yaml should be { widgetId: "<id>" }
-- "replace_dashboard": full dashboard YAML replacement. ONLY use when the user explicitly asks to rebuild/replace the entire dashboard. NEVER use this just to add new widgets — use add_widget instead.
+All tools support a "filters" array: [{"field":"X","operator":"=","value":"Y"}]
+Operators: =, !=, >, <, >=, <=, IN, NOT IN, LIKE, BETWEEN
+For date filtering by year, use BETWEEN with date strings: {"field":"ORDER_DATE","operator":"BETWEEN","value":"1998-01-01","value2":"1998-12-31"}
+NEVER use LIKE on date fields — always use BETWEEN or >= / < with date strings.
 
-IMPORTANT:
-- Always respond with valid JSON. The "yaml" field contains a JS object (not a YAML string).
-- When the user asks about a focused widget, apply changes only to that widget.
-- Preserve widget IDs when updating. Only generate new IDs for new widgets.
-- When adding multiple widgets, use "add_widget" with an array of widget objects, NOT "replace_dashboard".
-- Be concise in your message. 1-2 sentences max.`;
+Rules:
+- When building new charts, call sample_data and check_cardinality to inspect the actual data.
+- You can call multiple tools at once (e.g. sample_data + check_cardinality in parallel). Prefer parallel calls.
+- Use check_cardinality to decide chart type: ≤6 → pie/donut, ≤15 → bar, >15 → table/treemap.
+- If a tool call fails, proceed with your best guess rather than retrying.
+- For simple questions or modifications to existing widgets, skip tools and answer directly.
+- TRUST the data returned by tools — never question, doubt, or second-guess tool results in your message.
 
-async function callCortex(connection, llmMessages, model, maxTokens) {
-  const messagesStr = llmMessages.map(m =>
-    `{'role': '${m.role}', 'content': '${escapeForSnowflake(m.content)}'}`
-  ).join(', ');
+## RESPONSE FORMAT
+Respond with valid JSON:
+{
+  "message": "A short conversational explanation (1-2 sentences)",
+  "action": "none" | "add_widget" | "update_widget" | "remove_widget" | "replace_dashboard" | "add_dashboard",
+  "yaml": <widget/dashboard object or null>
+}
 
-  const sql = `
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
-      '${model}',
-      [${messagesStr}],
-      {'temperature': 0.3, 'max_tokens': ${maxTokens}}
-    ) as response
-  `;
+Actions:
+- "none": conversational answer only, yaml is null
+- "add_widget": yaml is a single widget object OR an array of widget objects
+- "update_widget": yaml is { widgetId: "<id>", widget: <updated widget> }. Preserve the widget id.
+- "remove_widget": yaml is { widgetId: "<id>" }
+- "replace_dashboard": full dashboard replacement — ONLY when user explicitly asks to rebuild entire dashboard
+- "add_dashboard": yaml is { title, tabs: [{ id, label, widgets: [...] }] } for multi-widget overviews
 
-  const result = await executeQuery(connection, sql);
-  let response = result[0]?.RESPONSE || result[0]?.response;
+IMPORTANT: Respond with ONLY valid JSON. No text before or after the JSON object. No markdown code fences.`;
 
-  if (response && typeof response === 'object') {
-    if (response.choices?.[0]) {
-      response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-    } else if (response.content) {
-      response = response.content;
+/**
+ * Call LLM with optional native tool support.
+ * Returns either a string (text content) or a message object (with tool_calls).
+ */
+async function callLLM(connWithCreds, llmMessages, model, maxTokens, provider, apiKey, endpointUrl, tools) {
+  const raw = await llmComplete({
+    messages: llmMessages,
+    model, maxTokens, temperature: 0.3,
+    provider, apiKey, connWithCreds, endpointUrl,
+    tools,
+  });
+  if (typeof raw === 'object' && raw.tool_calls) return raw;
+  return stripCodeFences(raw);
+}
+
+/**
+ * Streaming variant — yields tokens and returns the full text.
+ * Only used for the final answer (no tools).
+ */
+async function callLLMStreaming(connWithCreds, llmMessages, model, maxTokens, provider, apiKey, endpointUrl, onTextDelta) {
+  let full = '';
+  for await (const chunk of llmStream({
+    messages: llmMessages,
+    model, maxTokens, temperature: 0.3,
+    provider, apiKey, connWithCreds, endpointUrl,
+  })) {
+    full += chunk;
+    if (onTextDelta) onTextDelta(chunk);
+  }
+  return stripCodeFences(full);
+}
+
+/**
+ * Execute multiple tool calls in parallel and return results.
+ */
+/**
+ * Collapse tool interaction turns into a single assistant summary message.
+ * This lets us make a final LLM call without the `tools` parameter
+ * (which would otherwise be required by the API when tool messages exist).
+ */
+/**
+ * On the final round, append a user nudge telling the model to stop calling
+ * tools and produce its final text answer. The real tool history stays intact
+ * so Cortex never sees orphaned toolUse/toolResult blocks.
+ */
+function nudgeFinalAnswer(llmMessages) {
+  return [
+    ...llmMessages,
+    { role: 'user', content: 'You have gathered enough data. Now provide your final answer as JSON. Do NOT call any more tools.' },
+  ];
+}
+
+const TOOL_LABELS = {
+  sample_data: 'Sampling data',
+  check_cardinality: 'Checking cardinality',
+  test_query: 'Testing query',
+};
+
+async function executeToolCalls(connection, toolCalls, onToolStep) {
+  const toolSteps = [];
+  const results = await Promise.all(
+    toolCalls.map(async (tc) => {
+      const fnName = tc.function.name;
+      let args = {};
+      try { args = JSON.parse(tc.function.arguments); } catch { /* empty args */ }
+      const thinking = TOOL_LABELS[fnName] || `Running ${fnName}`;
+      const step = { tool: fnName, args, thinking };
+      if (onToolStep) onToolStep(step);
+      const result = await executeAgentTool(connection, fnName, args);
+      step.result = result;
+      toolSteps.push(step);
+      return { tool_call_id: tc.id, role: 'tool', content: JSON.stringify(result) };
+    })
+  );
+  return { toolMessages: results, toolSteps };
+}
+
+/**
+ * Parse a text response from the LLM into a structured action result.
+ * Handles JSON extraction, validation, and normalization.
+ */
+function parseAgentAnswer(text, toolSteps) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { return { message: text, action: 'none', yaml: null, toolSteps }; }
+    } else {
+      return { message: text, action: 'none', yaml: null, toolSteps };
     }
   }
 
-  if (typeof response !== 'string') {
-    response = JSON.stringify(response);
+  if (parsed.action === 'replace_dashboard' && parsed.yaml) {
+    parsed.yaml = validateAndNormalizeDashboard(parsed.yaml);
+  } else if (parsed.action === 'add_widget' && parsed.yaml) {
+    parsed.yaml = Array.isArray(parsed.yaml)
+      ? parsed.yaml.map(w => validateAndNormalizeWidget(w))
+      : validateAndNormalizeWidget(parsed.yaml);
+  } else if (parsed.action === 'update_widget' && parsed.yaml?.widget) {
+    parsed.yaml.widget = validateAndNormalizeWidget(parsed.yaml.widget);
+  } else if (parsed.action === 'add_dashboard' && parsed.yaml) {
+    const dashboard = parsed.yaml;
+    if (dashboard.tabs) {
+      for (const tab of dashboard.tabs) {
+        tab.widgets = (tab.widgets || []).map(w => validateAndNormalizeWidget(w));
+      }
+    } else if (Array.isArray(dashboard.widgets)) {
+      dashboard.tabs = [{ id: 'tab-1', label: 'Overview', widgets: dashboard.widgets.map(w => validateAndNormalizeWidget(w)) }];
+      delete dashboard.widgets;
+    }
+    if (!dashboard.title) dashboard.title = parsed.message || 'AI Dashboard';
   }
 
-  return stripCodeFences(response);
-}
-
-function stripCodeFences(text) {
-  if (typeof text !== 'string') return text;
-  return text
-    .replace(/^\s*```(?:ya?ml|json|sql|text)?\s*\n?/i, '')
-    .replace(/\n?\s*```\s*$/i, '')
-    .trim();
+  return {
+    message: parsed.message || 'Done.',
+    action: parsed.action || 'none',
+    yaml: parsed.yaml || null,
+    toolSteps,
+  };
 }
 
 export async function chatWithDashboard(connection, {
@@ -860,6 +913,12 @@ export async function chatWithDashboard(connection, {
   semanticViewMetadata,
   model = 'claude-sonnet-4-6',
   maxTokens = 4096,
+  onToolStep,
+  onTextDelta,
+  provider,
+  apiKey,
+  endpointUrl,
+  connWithCreds,
 }) {
   const viewContext = Array.isArray(semanticViewMetadata)
     ? semanticViewMetadata.map(buildSemanticViewContext).join('\n\n')
@@ -887,82 +946,102 @@ export async function chatWithDashboard(connection, {
     ...messages.map(m => ({ role: m.role, content: m.content })),
   ];
 
-  const toolSteps = [];
-  let iteration = 0;
+  const allToolSteps = [];
 
-  while (iteration < MAX_AGENT_ITERATIONS) {
-    iteration++;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
-    const rawResponse = await callCortex(connection, llmMessages, model, maxTokens);
+    const msgs = (isLastRound && allToolSteps.length > 0) ? nudgeFinalAnswer(llmMessages) : llmMessages;
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawResponse);
-    } catch {
-      const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try { parsed = JSON.parse(jsonMatch[0]); } catch { return { message: rawResponse, action: 'none', yaml: null, toolSteps }; }
-      } else {
-        return { message: rawResponse, action: 'none', yaml: null, toolSteps };
-      }
-    }
+    const response = await callLLM(connWithCreds, msgs, model, maxTokens, provider, apiKey, endpointUrl, NATIVE_TOOLS);
 
-    if (parsed.type === 'tool_call' && parsed.tool) {
-      const toolStep = {
-        tool: parsed.tool,
-        args: parsed.args || {},
-        thinking: parsed.thinking || '',
-      };
-
-      const toolResult = await executeAgentTool(connection, parsed.tool, parsed.args || {});
-      toolStep.result = toolResult;
-      toolSteps.push(toolStep);
-
-      const resultStr = JSON.stringify(toolResult, null, 2);
-      const truncatedResult = resultStr.length > 3000
-        ? resultStr.substring(0, 3000) + '\n... (truncated)'
-        : resultStr;
-
-      llmMessages.push({
-        role: 'assistant',
-        content: JSON.stringify({ type: 'tool_call', tool: parsed.tool, args: parsed.args, thinking: parsed.thinking }),
-      });
-      llmMessages.push({
-        role: 'user',
-        content: `Tool result for ${parsed.tool}:\n${truncatedResult}\n\nContinue. You have ${MAX_AGENT_ITERATIONS - iteration} tool calls remaining. Respond with ONLY valid JSON — no text before or after the JSON object.`,
-      });
-
+    if (typeof response === 'object' && response.tool_calls?.length) {
+      llmMessages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls });
+      const { toolMessages, toolSteps } = await executeToolCalls(connection, response.tool_calls, onToolStep);
+      allToolSteps.push(...toolSteps);
+      llmMessages.push(...toolMessages);
       continue;
     }
 
-    const finalParsed = parsed.type === 'answer' ? parsed : parsed;
-
-    if (finalParsed.action === 'replace_dashboard' && finalParsed.yaml) {
-      finalParsed.yaml = validateAndNormalizeDashboard(finalParsed.yaml);
-    } else if (finalParsed.action === 'add_widget' && finalParsed.yaml) {
-      if (Array.isArray(finalParsed.yaml)) {
-        finalParsed.yaml = finalParsed.yaml.map(w => validateAndNormalizeWidget(w));
-      } else {
-        finalParsed.yaml = validateAndNormalizeWidget(finalParsed.yaml);
-      }
-    } else if (finalParsed.action === 'update_widget' && finalParsed.yaml?.widget) {
-      finalParsed.yaml.widget = validateAndNormalizeWidget(finalParsed.yaml.widget);
-    }
-
-    return {
-      message: finalParsed.message || 'Done.',
-      action: finalParsed.action || 'none',
-      yaml: finalParsed.yaml || null,
-      toolSteps,
-    };
+    const text = typeof response === 'string' ? response : (response.content || '');
+    return parseAgentAnswer(text, allToolSteps);
   }
 
-  return {
-    message: 'I ran out of tool calls. Please try rephrasing your request.',
-    action: 'none',
-    yaml: null,
-    toolSteps,
-  };
+  return { message: 'I ran out of tool calls. Please try rephrasing your request.', action: 'none', yaml: null, toolSteps: allToolSteps };
+}
+
+/**
+ * Streaming variant of chatWithDashboard — streams text deltas to the client
+ * while still supporting tool-calling rounds.
+ */
+export async function chatWithDashboardStream(connection, {
+  messages,
+  currentYaml,
+  focusedWidgetId,
+  semanticViewMetadata,
+  model = 'claude-sonnet-4-6',
+  maxTokens = 4096,
+  onToolStep,
+  onTextDelta,
+  provider,
+  apiKey,
+  endpointUrl,
+  connWithCreds,
+}) {
+  const viewContext = Array.isArray(semanticViewMetadata)
+    ? semanticViewMetadata.map(buildSemanticViewContext).join('\n\n')
+    : buildSemanticViewContext(semanticViewMetadata);
+
+  const currentYamlStr = currentYaml
+    ? (typeof currentYaml === 'string' ? currentYaml : yaml.dump(currentYaml))
+    : '(empty dashboard)';
+
+  let focusContext = '';
+  if (focusedWidgetId && currentYaml?.tabs) {
+    for (const tab of currentYaml.tabs) {
+      const w = (tab.widgets || []).find(w => w.id === focusedWidgetId);
+      if (w) {
+        focusContext = `\n\n## FOCUSED WIDGET\nThe user is focused on widget "${w.title}" (id: ${w.id}, type: ${w.type}). Apply changes to THIS widget unless they clearly ask for something else.\n\`\`\`yaml\n${yaml.dump(w)}\`\`\``;
+        break;
+      }
+    }
+  }
+
+  const systemContent = `${CHAT_SYSTEM_PROMPT}\n\n${viewContext}\n\n## CURRENT DASHBOARD\n\`\`\`yaml\n${currentYamlStr}\n\`\`\`${focusContext}`;
+
+  const llmMessages = [
+    { role: 'system', content: systemContent },
+    ...messages.map(m => ({ role: m.role, content: m.content })),
+  ];
+
+  const allToolSteps = [];
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
+
+    if (isLastRound && allToolSteps.length > 0) {
+      const msgs = nudgeFinalAnswer(llmMessages);
+      const text = await callLLMStreaming(connWithCreds, msgs, model, maxTokens, provider, apiKey, endpointUrl, onTextDelta);
+      return parseAgentAnswer(text, allToolSteps);
+    }
+
+    const response = await callLLM(connWithCreds, llmMessages, model, maxTokens, provider, apiKey, endpointUrl, NATIVE_TOOLS);
+
+    if (typeof response === 'object' && response.tool_calls?.length) {
+      llmMessages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls });
+      const roundToolStep = onToolStep ? (step) => onToolStep({ ...step, round }) : undefined;
+      const { toolMessages, toolSteps } = await executeToolCalls(connection, response.tool_calls, roundToolStep);
+      allToolSteps.push(...toolSteps);
+      llmMessages.push(...toolMessages);
+      continue;
+    }
+
+    const text = typeof response === 'string' ? response : (response.content || '');
+    if (onTextDelta && text) onTextDelta(text);
+    return parseAgentAnswer(text, allToolSteps);
+  }
+
+  return { message: 'I ran out of tool calls. Please try rephrasing your request.', action: 'none', yaml: null, toolSteps: allToolSteps };
 }
 
 export async function conversationalAnswer(connection, {
@@ -970,54 +1049,33 @@ export async function conversationalAnswer(connection, {
   semanticViewMetadata,
   model = 'claude-sonnet-4-6',
   maxTokens = 4096,
+  provider,
+  apiKey,
+  endpointUrl,
+  connWithCreds,
 }) {
   const viewContext = Array.isArray(semanticViewMetadata)
     ? semanticViewMetadata.map(buildSemanticViewContext).join('\n\n')
     : buildSemanticViewContext(semanticViewMetadata);
-
-  const toolDescriptions = AGENT_TOOLS.map(t => {
-    const params = Object.entries(t.parameters)
-      .map(([k, v]) => `    ${k}: ${v}`)
-      .join('\n');
-    return `- ${t.name}: ${t.description}\n  Parameters:\n${params}`;
-  }).join('\n\n');
 
   const systemContent = `You are SimplyAsk, a friendly and knowledgeable data analytics assistant.
 You answer questions about the user's data conversationally. You are NOT a dashboard editor.
 
 ${viewContext}
 
-## TOOLS
-You can query the data to answer questions accurately. Use tools when the user asks a factual question about their data.
-For greetings, general conversation, or questions you can answer without data, respond directly — do NOT use tools.
+## TOOL USAGE
+You have tools to query real data:
+- sample_data(semanticView, dimensions, measures?, limit?) — get sample rows
+- check_cardinality(semanticView, field) — count distinct values for a dimension
+- test_query(semanticView, dimensions, measures, limit?) — verify a query returns data
 
-Available tools:
-${toolDescriptions}
-
-## RESPONSE FORMAT
-You MUST respond with valid JSON. There are TWO response types:
-
-### Type 1: Tool call (to query data before answering)
-{
-  "type": "tool_call",
-  "tool": "<tool_name>",
-  "args": { <tool parameters> },
-  "thinking": "Brief explanation of why you're calling this tool"
-}
-
-### Type 2: Final answer
-{
-  "type": "answer",
-  "message": "Your conversational response in markdown. Be helpful, clear, and concise."
-}
+You can call multiple tools in parallel. For greetings, general conversation, or questions you can answer without data, respond directly — do NOT use tools.
 
 RULES:
 - For greetings like "hi", "hello", "hey" — respond warmly WITHOUT using tools.
 - For general chat or help requests — respond directly WITHOUT using tools.
 - For data questions — use tools to query data first, then give a complete textual answer with the results.
 - When presenting data results, format them nicely using markdown tables or bullet points.
-- You can make at most ${MAX_AGENT_ITERATIONS} tool calls per turn.
-- Always end with a Type 2 "answer" response after gathering data.
 - Be conversational and natural. You are chatting with the user, not generating dashboards.`;
 
   const llmMessages = [
@@ -1025,64 +1083,28 @@ RULES:
     ...messages.map(m => ({ role: m.role, content: m.content })),
   ];
 
-  const toolSteps = [];
-  let iteration = 0;
+  const allToolSteps = [];
 
-  while (iteration < MAX_AGENT_ITERATIONS) {
-    iteration++;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
-    const rawResponse = await callCortex(connection, llmMessages, model, maxTokens);
+    const msgs = (isLastRound && allToolSteps.length > 0) ? nudgeFinalAnswer(llmMessages) : llmMessages;
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawResponse);
-    } catch {
-      const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try { parsed = JSON.parse(jsonMatch[0]); } catch { return { message: rawResponse, toolSteps }; }
-      } else {
-        return { message: rawResponse, toolSteps };
-      }
-    }
+    const response = await callLLM(connWithCreds, msgs, model, maxTokens, provider, apiKey, endpointUrl, NATIVE_TOOLS);
 
-    if (parsed.type === 'tool_call' && parsed.tool) {
-      const toolStep = {
-        tool: parsed.tool,
-        args: parsed.args || {},
-        thinking: parsed.thinking || '',
-      };
-
-      const toolResult = await executeAgentTool(connection, parsed.tool, parsed.args || {});
-      toolStep.result = toolResult;
-      toolSteps.push(toolStep);
-
-      const resultStr = JSON.stringify(toolResult, null, 2);
-      const truncatedResult = resultStr.length > 3000
-        ? resultStr.substring(0, 3000) + '\n... (truncated)'
-        : resultStr;
-
-      llmMessages.push({
-        role: 'assistant',
-        content: JSON.stringify({ type: 'tool_call', tool: parsed.tool, args: parsed.args, thinking: parsed.thinking }),
-      });
-      llmMessages.push({
-        role: 'user',
-        content: `Tool result for ${parsed.tool}:\n${truncatedResult}\n\nNow respond with a Type 2 "answer" JSON containing your conversational response to the user. You have ${MAX_AGENT_ITERATIONS - iteration} tool calls remaining.`,
-      });
-
+    if (typeof response === 'object' && response.tool_calls?.length) {
+      llmMessages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls });
+      const { toolMessages, toolSteps } = await executeToolCalls(connection, response.tool_calls);
+      allToolSteps.push(...toolSteps);
+      llmMessages.push(...toolMessages);
       continue;
     }
 
-    return {
-      message: parsed.message || rawResponse,
-      toolSteps,
-    };
+    const text = typeof response === 'string' ? response : (response.content || '');
+    return { message: text, toolSteps: allToolSteps };
   }
 
-  return {
-    message: 'I ran out of tool calls. Please try rephrasing your request.',
-    toolSteps,
-  };
+  return { message: 'I ran out of tool calls. Please try rephrasing your request.', toolSteps: allToolSteps };
 }
 
 /**
@@ -1096,17 +1118,15 @@ export async function askChat(connection, {
   model = 'claude-sonnet-4-6',
   maxTokens = 4096,
   onToolStep,
+  onTextDelta,
+  provider,
+  apiKey,
+  endpointUrl,
+  connWithCreds,
 }) {
   const viewContext = Array.isArray(semanticViewMetadata)
     ? semanticViewMetadata.map(buildSemanticViewContext).join('\n\n')
     : buildSemanticViewContext(semanticViewMetadata);
-
-  const toolDescriptions = AGENT_TOOLS.map(t => {
-    const params = Object.entries(t.parameters)
-      .map(([k, v]) => `    ${k}: ${v}`)
-      .join('\n');
-    return `- ${t.name}: ${t.description}\n  Parameters:\n${params}`;
-  }).join('\n\n');
 
   let artifactContext = '';
   if (priorArtifacts.length > 0) {
@@ -1129,13 +1149,20 @@ You help users explore their data, answer questions, and build or modify visuali
 
 ${viewContext}
 
-## TOOLS
-You can query the data to answer questions accurately or to inspect data before building charts.
+## TOOL USAGE
+You have tools to query real data:
+- sample_data(semanticView, dimensions, measures?, filters?, limit?) — get sample rows to understand the data
+- check_cardinality(semanticView, field) — count distinct values for a dimension
+- test_query(semanticView, dimensions, measures, filters?, limit?) — verify a query returns data
+
+All tools support a "filters" array: [{"field":"X","operator":"=","value":"Y"}]
+Operators: =, !=, >, <, >=, <=, IN, NOT IN, LIKE, BETWEEN
+For date filtering by year, use BETWEEN with date strings: {"field":"ORDER_DATE","operator":"BETWEEN","value":"1998-01-01","value2":"1998-12-31"}
+NEVER use LIKE on date fields — always use BETWEEN or >= / < with date strings.
+
+You can call multiple tools at once to gather data in parallel (e.g. sample_data + check_cardinality).
 For greetings, general conversation, or questions you can answer without data, respond directly — do NOT use tools.
 When building new charts, ALWAYS call sample_data first to understand the data before choosing a chart type.
-
-Available tools:
-${toolDescriptions}
 
 ## WIDGET SCHEMA
 When creating or modifying widgets, use this field structure:
@@ -1212,19 +1239,8 @@ IMPORTANT: When the user asks for data "by year", "by month", "quarterly", etc. 
 ${artifactContext}
 
 ## RESPONSE FORMAT
-You MUST respond with valid JSON. There are TWO response types:
-
-### Type 1: Tool call (to query data before answering)
+Respond with valid JSON:
 {
-  "type": "tool_call",
-  "tool": "<tool_name>",
-  "args": { <tool parameters> },
-  "thinking": "Brief explanation of why you're calling this tool"
-}
-
-### Type 2: Final answer
-{
-  "type": "answer",
   "message": "Your conversational response in markdown. Be helpful, clear, and concise.",
   "action": "none" | "add_widget" | "update_widget" | "add_dashboard",
   "yaml": <see action descriptions below>
@@ -1239,113 +1255,58 @@ Actions:
 RULES:
 - CRITICAL: Respond with ONLY valid JSON. No text before or after the JSON object. No markdown code fences.
 - For greetings like "hi" — respond warmly with action "none". No tools needed.
-- For data questions — use tools to query data, then answer with text. Use action "none".
+- For data questions — use tools to query data, then answer with specific findings. Use action "none".
 - For single chart / "show me" / "visualize" requests — sample data first, then use action "add_widget".
 - For "dashboard" / "overview" / "report" / "KPIs" / multiple charts — sample data first, then use action "add_dashboard" with multiple widgets organized in tabs.
 - For "change the chart" / "make it a line chart" / modifications — use action "update_widget".
 - When presenting data results as text, use markdown tables or bullet points.
-- You can make at most ${MAX_AGENT_ITERATIONS} tool calls per turn.
-- Be concise. 1-2 sentences for the message field.
-- The "yaml" field contains a JS object, not a YAML string.`;
+- The "yaml" field contains a JS object, not a YAML string.
+
+## MESSAGE QUALITY RULES
+Your "message" field is the primary communication with the user. Write like a confident data analyst:
+- Lead with the direct answer to the question (e.g. "Total US revenue in 1998 was $28.4M")
+- Include specific numbers, percentages, comparisons, and rankings from the tool results
+- Highlight notable patterns: top/bottom performers, outliers, trends, year-over-year changes
+- Provide 1-2 sentences of actionable insight or business context
+- TRUST the data returned by tools — never question, doubt, or second-guess tool results in your response
+- NEVER say things like "this looks unusual", "the data may be wrong", or "let me verify"
+- When a chart is attached (add_widget/add_dashboard), the chart renders automatically — do NOT describe the chart. State the findings the data reveals.
+- NEVER write vague statements like "Here's a chart showing X" or "Look for the steepest trend"
+- NEVER use emojis
+- For greetings / simple conversation, keep it short and friendly (1-2 sentences is fine)`;
 
   const llmMessages = [
     { role: 'system', content: systemContent },
     ...messages.map(m => ({ role: m.role, content: m.content })),
   ];
 
-  const toolSteps = [];
-  let iteration = 0;
+  const allToolSteps = [];
 
-  while (iteration < MAX_AGENT_ITERATIONS) {
-    iteration++;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
-    const rawResponse = await callCortex(connection, llmMessages, model, maxTokens);
+    const msgs = (isLastRound && allToolSteps.length > 0) ? nudgeFinalAnswer(llmMessages) : llmMessages;
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawResponse);
-    } catch {
-      // The AI sometimes wraps JSON in conversational text — extract it
-      const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch {
-          return { message: rawResponse, action: 'none', yaml: null, toolSteps };
-        }
-      } else {
-        return { message: rawResponse, action: 'none', yaml: null, toolSteps };
-      }
-    }
+    const response = await callLLM(connWithCreds, msgs, model, maxTokens, provider, apiKey, endpointUrl, NATIVE_TOOLS);
 
-    if (parsed.type === 'tool_call' && parsed.tool) {
-      const toolStep = {
-        tool: parsed.tool,
-        args: parsed.args || {},
-        thinking: parsed.thinking || '',
-      };
-
-      if (onToolStep) onToolStep(toolStep);
-
-      const toolResult = await executeAgentTool(connection, parsed.tool, parsed.args || {});
-      toolStep.result = toolResult;
-      toolSteps.push(toolStep);
-
-      const resultStr = JSON.stringify(toolResult, null, 2);
-      const truncatedResult = resultStr.length > 3000
-        ? resultStr.substring(0, 3000) + '\n... (truncated)'
-        : resultStr;
-
-      llmMessages.push({
-        role: 'assistant',
-        content: JSON.stringify({ type: 'tool_call', tool: parsed.tool, args: parsed.args, thinking: parsed.thinking }),
-      });
-      llmMessages.push({
-        role: 'user',
-        content: `Tool result for ${parsed.tool}:\n${truncatedResult}\n\nContinue. You have ${MAX_AGENT_ITERATIONS - iteration} tool calls remaining. Respond with ONLY valid JSON — no text before or after the JSON object.`,
-      });
-
+    // Native tool calls — execute in parallel, append results, loop
+    if (typeof response === 'object' && response.tool_calls?.length) {
+      llmMessages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls });
+      const { toolMessages, toolSteps } = await executeToolCalls(connection, response.tool_calls, onToolStep);
+      allToolSteps.push(...toolSteps);
+      llmMessages.push(...toolMessages);
       continue;
     }
 
-    if (parsed.action === 'add_widget' && parsed.yaml) {
-      if (Array.isArray(parsed.yaml)) {
-        parsed.yaml = parsed.yaml.map(w => validateAndNormalizeWidget(w));
-      } else {
-        parsed.yaml = validateAndNormalizeWidget(parsed.yaml);
-      }
-    } else if (parsed.action === 'update_widget' && parsed.yaml?.widget) {
-      parsed.yaml.widget = validateAndNormalizeWidget(parsed.yaml.widget);
-    } else if (parsed.action === 'add_dashboard' && parsed.yaml) {
-      const dashboard = parsed.yaml;
-      if (dashboard.tabs) {
-        for (const tab of dashboard.tabs) {
-          tab.widgets = (tab.widgets || []).map(w => validateAndNormalizeWidget(w));
-        }
-      } else if (Array.isArray(dashboard.widgets)) {
-        dashboard.tabs = [{ id: 'tab-1', label: 'Overview', widgets: dashboard.widgets.map(w => validateAndNormalizeWidget(w)) }];
-        delete dashboard.widgets;
-      }
-      if (!dashboard.title) dashboard.title = parsed.message || 'AI Dashboard';
-    }
-
-    return {
-      message: parsed.message || 'Done.',
-      action: parsed.action || 'none',
-      yaml: parsed.yaml || null,
-      toolSteps,
-    };
+    // Text response — parse as JSON action
+    const text = typeof response === 'string' ? response : (response.content || '');
+    return parseAgentAnswer(text, allToolSteps);
   }
 
-  return {
-    message: 'I ran out of tool calls. Please try rephrasing your request.',
-    action: 'none',
-    yaml: null,
-    toolSteps,
-  };
+  return { message: 'I ran out of tool calls. Please try rephrasing your request.', action: 'none', yaml: null, toolSteps: allToolSteps };
 }
 
-export async function classifyIntent(connection, { message, hasHistory, model = 'claude-sonnet-4-6' }) {
+export async function classifyIntent(connection, { message, hasHistory, model = 'claude-sonnet-4-6', provider, apiKey, endpointUrl, connWithCreds }) {
   const systemPrompt = `You are an intent classifier for a data analytics chat assistant. Given the user's message, classify their intent into exactly ONE of these categories:
 
 - "dashboard": User wants a multi-widget dashboard, overview, report, or KPI summary with multiple charts
@@ -1365,7 +1326,7 @@ Do NOT include any other text.`;
     { role: 'user', content: userContent },
   ];
 
-  const raw = await callCortex(connection, messages, model, 128);
+  const raw = await callLLM(connWithCreds, messages, model, 128, provider, apiKey, endpointUrl);
   try {
     const parsed = JSON.parse(raw);
     const valid = ['dashboard', 'widget', 'data_answer', 'chat'];
@@ -1374,11 +1335,14 @@ Do NOT include any other text.`;
   return 'chat';
 }
 
+export { WIDGET_SCHEMA_PROMPT };
+
 export default {
   generateDashboard,
   generateWidget,
   modifyDashboard,
   chatWithDashboard,
+  chatWithDashboardStream,
   conversationalAnswer,
   askChat,
   classifyIntent,

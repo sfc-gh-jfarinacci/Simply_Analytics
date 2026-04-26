@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import yaml from 'js-yaml';
 import dashboardServicePg from '../services/dashboardServicePg.js';
-import dashboardAiService from '../services/dashboardAiService.js';
+import dashboardAiService from '../services/dashboardAi/index.js';
 import explorerAiService from '../services/explorerAiService.js';
-import { getCachedDashboardConnection } from '../services/connectionService.js';
+import { getCachedDashboardConnection, getConnectionWithCredentialsForDashboard } from '../services/connectionService.js';
+import workspaceService from '../services/workspaceService.js';
+import { trackEvent } from '../services/eventTracker.js';
 
 export const dashboardAiRoutes = Router();
 
@@ -21,6 +23,28 @@ async function resolveConnection(req) {
   }
 
   return null;
+}
+
+async function resolveAiConfig(req) {
+  if (req.body.provider) {
+    return { provider: req.body.provider, model: req.body.model || undefined, apiKey: req.body.apiKey || null, endpointUrl: req.body.endpointUrl || null };
+  }
+  const workspaceId = req.body.workspaceId;
+  if (workspaceId) {
+    try {
+      const cfg = await workspaceService.getAiConfigWithKey(workspaceId);
+      return { provider: cfg.provider || 'cortex', model: cfg.defaultModel || undefined, apiKey: cfg.apiKey, endpointUrl: cfg.endpointUrl };
+    } catch { /* fall through */ }
+  }
+  return { provider: undefined, model: undefined, apiKey: undefined, endpointUrl: undefined };
+}
+
+async function resolveConnWithCreds(connectionId, provider) {
+  if (provider && provider !== 'cortex') return null;
+  if (!connectionId) return null;
+  try {
+    return await getConnectionWithCredentialsForDashboard(connectionId);
+  } catch { return null; }
 }
 
 /**
@@ -48,11 +72,18 @@ dashboardAiRoutes.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'prompt is required' });
     }
 
+    const aiCfg = await resolveAiConfig(req);
+    const connWithCreds = await resolveConnWithCreds(connectionId, aiCfg.provider);
+
     const startTime = Date.now();
     const yamlContent = await dashboardAiService.generateDashboard(connection, {
       prompt,
       semanticViewMetadata,
-      model,
+      model: model || aiCfg.model,
+      provider: aiCfg.provider,
+      apiKey: aiCfg.apiKey,
+      endpointUrl: aiCfg.endpointUrl,
+      connWithCreds,
     });
     const generationTime = Date.now() - startTime;
 
@@ -71,6 +102,14 @@ dashboardAiRoutes.post('/generate', async (req, res) => {
       };
       dashboard = await dashboardServicePg.createDashboard(dashboardData, req.user.id);
     }
+
+    trackEvent('ai.request', {
+      userId: req.user?.id,
+      workspaceId: req.body.workspaceId || null,
+      entityType: 'dashboard',
+      metadata: { action: 'generate', generationTime, provider: aiCfg.provider, requestType: 'ai' },
+      ip: req.ip,
+    });
 
     res.json({
       success: true,
@@ -110,13 +149,20 @@ dashboardAiRoutes.post('/generate-widget', async (req, res) => {
       return res.status(400).json({ error: 'prompt is required' });
     }
 
+    const aiCfg = await resolveAiConfig(req);
+    const connWithCreds = await resolveConnWithCreds(req.body.connectionId, aiCfg.provider);
+
     const startTime = Date.now();
     const widget = await dashboardAiService.generateWidget(connection, {
       prompt,
       semanticViewMetadata,
       existingWidgets,
       position,
-      model,
+      model: model || aiCfg.model,
+      provider: aiCfg.provider,
+      apiKey: aiCfg.apiKey,
+      endpointUrl: aiCfg.endpointUrl,
+      connWithCreds,
     });
     const generationTime = Date.now() - startTime;
 
@@ -179,12 +225,19 @@ dashboardAiRoutes.post('/modify', async (req, res) => {
       return res.status(400).json({ error: 'No dashboard YAML to modify. Provide currentYaml or dashboardId.' });
     }
 
+    const aiCfg = await resolveAiConfig(req);
+    const connWithCreds = await resolveConnWithCreds(req.body.connectionId, aiCfg.provider);
+
     const startTime = Date.now();
     const yamlContent = await dashboardAiService.modifyDashboard(connection, {
       prompt,
       currentYaml: yamlToModify,
       semanticViewMetadata,
-      model,
+      model: model || aiCfg.model,
+      provider: aiCfg.provider,
+      apiKey: aiCfg.apiKey,
+      endpointUrl: aiCfg.endpointUrl,
+      connWithCreds,
     });
     const generationTime = Date.now() - startTime;
 
@@ -215,10 +268,22 @@ dashboardAiRoutes.post('/modify', async (req, res) => {
 });
 
 dashboardAiRoutes.post('/chat', async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
     const connection = await resolveConnection(req);
     if (!connection) {
-      return res.status(401).json({ error: 'Snowflake connection required. Pass connectionId in body.', code: 'NO_CONNECTION' });
+      sendEvent('error', { error: 'Snowflake connection required. Pass connectionId in body.' });
+      return res.end();
     }
 
     const {
@@ -230,30 +295,49 @@ dashboardAiRoutes.post('/chat', async (req, res) => {
     } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: 'messages array is required and must not be empty' });
+      sendEvent('error', { error: 'messages array is required and must not be empty' });
+      return res.end();
     }
 
+    const aiCfg = await resolveAiConfig(req);
+    const connWithCreds = await resolveConnWithCreds(req.body.connectionId, aiCfg.provider);
+
+    sendEvent('response.status', { message: 'Thinking...' });
+
     const startTime = Date.now();
-    const result = await dashboardAiService.chatWithDashboard(connection, {
+    const result = await dashboardAiService.chatWithDashboardStream(connection, {
       messages,
       currentYaml,
       focusedWidgetId,
       semanticViewMetadata,
-      model,
+      model: model || aiCfg.model,
+      onToolStep: (step) => {
+        sendEvent('response.tool_step', { tool: step.tool, thinking: step.thinking, round: step.round ?? 0 });
+      },
+      onTextDelta: (delta) => {
+        sendEvent('response.text.delta', { text: delta });
+      },
+      provider: aiCfg.provider,
+      apiKey: aiCfg.apiKey,
+      endpointUrl: aiCfg.endpointUrl,
+      connWithCreds,
     });
     const generationTime = Date.now() - startTime;
 
-    res.json({
+    sendEvent('response.result', {
       success: true,
-      ...result,
+      message: result.message,
+      action: result.action,
+      yaml: result.yaml,
+      toolSteps: result.toolSteps,
       generationTime,
     });
+    sendEvent('response.done', {});
   } catch (error) {
     console.error('AI chat error:', error);
-    res.status(500).json({
-      error: error.message || 'AI chat failed',
-      code: 'AI_CHAT_ERROR',
-    });
+    sendEvent('error', { error: error.message || 'AI chat failed' });
+  } finally {
+    res.end();
   }
 });
 
@@ -279,12 +363,19 @@ dashboardAiRoutes.post('/explore', async (req, res) => {
       return res.status(400).json({ error: 'question is required' });
     }
 
+    const aiCfg = await resolveAiConfig(req);
+    const connWithCreds = await resolveConnWithCreds(req.body.connectionId, aiCfg.provider);
+
     const startTime = Date.now();
     const result = await explorerAiService.exploreData(connection, {
       question,
       semanticViewMetadata,
       conversationHistory,
-      model,
+      model: model || aiCfg.model,
+      provider: aiCfg.provider,
+      apiKey: aiCfg.apiKey,
+      endpointUrl: aiCfg.endpointUrl,
+      connWithCreds,
     });
 
     res.json({

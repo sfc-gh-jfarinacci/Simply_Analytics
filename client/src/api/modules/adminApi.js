@@ -1,14 +1,6 @@
 import { fetchApi } from './fetchCore.js';
 import { API_BASE } from './fetchCore.js';
 
-function authHeaders() {
-  const token = sessionStorage.getItem('authToken');
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
-  };
-}
-
 export const adminApi = {
   async getConfig() {
     const res = await fetchApi('/admin/config');
@@ -88,70 +80,63 @@ export const adminApi = {
     return res.json();
   },
 
-  async testMigrationTarget(destConfig) {
-    const res = await fetchApi('/admin/test-migration-target', {
+  // Postgres password rotation
+  async rotatePgPassword(currentPassword, newPassword) {
+    const res = await fetchApi('/admin/rotate-pg-password', {
       method: 'POST',
-      body: JSON.stringify(destConfig),
+      body: JSON.stringify({ currentPassword, newPassword }),
     });
     return res.json();
   },
 
-  migrateData(destConfig, onProgress, onComplete, onError) {
-    return new Promise((resolve) => {
-      const token = sessionStorage.getItem('authToken');
-      fetch(`${API_BASE}/admin/migrate-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify(destConfig),
-      }).then((res) => {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        function read() {
-          reader.read().then(({ done, value }) => {
-            if (done) { resolve(); return; }
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  if (data.type === 'progress') onProgress?.(data);
-                  else if (data.type === 'complete') onComplete?.(data);
-                  else if (data.type === 'error') onError?.(data.message);
-                } catch (_) {}
-              }
-            }
-            read();
-          });
-        }
-        read();
-      }).catch((err) => {
-        onError?.(err.message);
-        resolve();
-      });
-    });
+  // Backup management
+  async getBackups() {
+    const res = await fetchApi('/admin/backups');
+    return res.json();
   },
 
-  async switchBackend(destConfig) {
-    const res = await fetchApi('/admin/switch-backend', {
+  async createBackup() {
+    const res = await fetchApi('/admin/backups', { method: 'POST' });
+    return res.json();
+  },
+
+  async downloadBackup(id) {
+    const res = await fetchApi(`/admin/backups/${id}/download`);
+    if (!res.ok) throw new Error('Download failed');
+    return res.blob();
+  },
+
+  async deleteBackup(id) {
+    const res = await fetchApi(`/admin/backups/${id}`, { method: 'DELETE' });
+    return res.json();
+  },
+
+  async restoreBackup(backupFile, recoveryKeyFile) {
+    const formData = new FormData();
+    formData.append('backup', backupFile);
+    formData.append('recoveryKey', recoveryKeyFile);
+    const token = sessionStorage.getItem('authToken');
+    const res = await fetch(`${API_BASE}/admin/backups/restore`, {
       method: 'POST',
-      body: JSON.stringify(destConfig),
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
     });
     return res.json();
   },
 
-  async verifyMasterKey(key) {
-    const res = await fetchApi('/admin/master-key/verify', {
-      method: 'POST',
-      body: JSON.stringify({ key }),
-    });
-    return res.json();
+  // Recovery key
+  async downloadRecoveryKey() {
+    const res = await fetchApi('/admin/recovery-key');
+    if (!res.ok) throw new Error('Failed to download recovery key');
+    return res.blob();
+  },
+
+  async rotateMasterKey() {
+    const res = await fetchApi('/admin/rotate-master-key', { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Rotation failed');
+    }
+    return res.blob();
   },
 };

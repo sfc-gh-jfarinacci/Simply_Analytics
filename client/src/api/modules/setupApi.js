@@ -17,13 +17,45 @@ export const setupApi = {
     return res.json();
   },
 
-  async getMasterKey() {
-    const res = await fetchApi('/setup/master-key');
+  async downloadRecoveryKey() {
+    const res = await fetchApi('/setup/recovery-key');
+    if (!res.ok) throw new Error('Failed to download recovery key');
+    return res.blob();
+  },
+
+  async detectBundledPg() {
+    const res = await fetchApi('/setup/detect-bundled-pg');
+    if (!res.ok) return { detected: false };
+    return res.json();
+  },
+
+  async restore(backupFile, recoveryKeyFile) {
+    const formData = new FormData();
+    formData.append('backup', backupFile);
+    formData.append('recoveryKey', recoveryKeyFile);
+    const token = sessionStorage.getItem('authToken');
+    const res = await fetch(`${API_BASE}/setup/restore`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/octet-stream')) {
+      return { success: true, blob: await res.blob() };
+    }
     return res.json();
   },
 
   async testDatabase(config) {
     const res = await fetchApi('/setup/test-database', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+    return res.json();
+  },
+
+  async provisionDatabase(config) {
+    const res = await fetchApi('/setup/provision-database', {
       method: 'POST',
       body: JSON.stringify(config),
     });

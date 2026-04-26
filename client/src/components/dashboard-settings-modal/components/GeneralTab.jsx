@@ -9,7 +9,6 @@ import {
   FiChevronDown,
   FiTrash2,
   FiAlertCircle,
-  FiZap,
 } from 'react-icons/fi';
 
 export function GeneralTab({
@@ -38,14 +37,6 @@ export function GeneralTab({
   removeSemanticView,
   semanticViewError,
   errorViewName,
-  cortexAgentsEnabled,
-  setCortexAgentsEnabled,
-  availableCortexAgents,
-  cortexAgents,
-  selectedCortexAgent,
-  setSelectedCortexAgent,
-  addCortexAgent,
-  removeCortexAgent,
 }) {
   return (
     <div className="settings-section">
@@ -259,72 +250,7 @@ export function GeneralTab({
         )}
       </div>
 
-      {/* Cortex Agents */}
-      <div className="form-group cortex-agents-section">
-        <div className="cortex-agents-header">
-          <label className="form-label" style={{ margin: 0 }}>
-            <FiZap className="label-icon" />
-            Cortex Agents
-          </label>
-          <label className="cortex-toggle">
-            <input type="checkbox" checked={cortexAgentsEnabled} onChange={(e) => setCortexAgentsEnabled(e.target.checked)} />
-            <span className="cortex-toggle-track" />
-          </label>
-        </div>
-
-        {cortexAgentsEnabled && (
-          <div className="cortex-agents-content">
-            {/* Add cortex agent */}
-            <div className="semantic-view-add">
-              <div className="select-wrapper" style={{ flex: 1 }}>
-                <select className="form-input" value={selectedCortexAgent} onChange={(e) => setSelectedCortexAgent(e.target.value)}>
-                  <option value="">Select cortex agent...</option>
-                  {availableCortexAgents
-                    .filter((a) => !cortexAgents.some((ref) => (typeof ref === 'object' ? ref.fullyQualifiedName : ref) === a.fullyQualifiedName))
-                    .map((agent) => (
-                      <option key={agent.fullyQualifiedName} value={agent.fullyQualifiedName}>
-                        {agent.fullyQualifiedName}
-                      </option>
-                    ))}
-                </select>
-                <FiChevronDown className="select-icon" />
-              </div>
-              <button className="btn btn-secondary add-btn" onClick={addCortexAgent} disabled={!selectedCortexAgent}>
-                <FiPlus /> Add
-              </button>
-            </div>
-
-            {/* List of added cortex agents */}
-            <div className="semantic-views-list">
-              {cortexAgents.length === 0 ? (
-                <div className="semantic-views-empty">
-                  <FiZap />
-                  <span>No cortex agents added</span>
-                </div>
-              ) : (
-                cortexAgents.map((agent, index) => {
-                  const agentName = typeof agent === 'string' ? agent : agent.name;
-                  const agentFqn = typeof agent === 'object' ? agent.fullyQualifiedName : agent;
-                  return (
-                    <div key={agentFqn || index} className="semantic-view-item">
-                      <div className="semantic-view-info">
-                        <FiZap className="view-icon" />
-                        <div className="view-details">
-                          <span className="view-name">{agentName}</span>
-                          {agentFqn && <span className="view-fqn">{agentFqn}</span>}
-                        </div>
-                      </div>
-                      <button className="remove-view-btn" onClick={() => removeCortexAgent(agentFqn)} title="Remove cortex agent">
-                        <FiTrash2 />
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+    
     </div>
   );
 }

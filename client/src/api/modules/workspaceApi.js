@@ -154,31 +154,177 @@ export const workspaceApi = {
     return res.json();
   },
 
-  // Agents
-  async addAgent(wsId, data) {
-    const res = await fetchApi(`/workspaces/${wsId}/agents`, {
+  // Endpoints (published query APIs)
+  async listEndpoints(wsId) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints`);
+    return safeJson(res, { endpoints: [] });
+  },
+
+  async validateEndpoint(wsId, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints/validate`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    const result = await safeJson(res, { valid: false, error: 'Validation failed' });
+    if (!res.ok && !result.error) {
+      throw new Error('Validation failed');
+    }
+    return result;
+  },
+
+  async createEndpoint(wsId, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      const err = await safeJson(res, { error: 'Failed to add agent' });
-      const error = new Error(err.error);
-      error.status = res.status;
-      throw error;
+      const err = await safeJson(res, { error: 'Failed to create endpoint' });
+      throw new Error(err.error);
     }
     return res.json();
   },
 
-  async updateAgent(wsId, agentId, data) {
-    const res = await fetchApi(`/workspaces/${wsId}/agents/${agentId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
+  async getEndpoint(wsId, slug) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints/${slug}`);
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Endpoint not found' });
+      throw new Error(err.error);
+    }
     return res.json();
   },
 
-  async removeAgent(wsId, agentId) {
-    const res = await fetchApi(`/workspaces/${wsId}/agents/${agentId}`, { method: 'DELETE' });
+  async runEndpoint(wsId, slug, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = `/workspaces/${wsId}/endpoints/${slug}/run${qs ? `?${qs}` : ''}`;
+    const res = await fetchApi(url);
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Endpoint execution failed' });
+      throw new Error(err.error);
+    }
     return res.json();
+  },
+
+  async updateEndpoint(wsId, slug, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints/${slug}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to update endpoint' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  async deleteEndpoint(wsId, slug) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints/${slug}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to delete endpoint' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  async regenerateEndpointToken(wsId, slug) {
+    const res = await fetchApi(`/workspaces/${wsId}/endpoints/${slug}/regenerate-token`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to regenerate token' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  // API Keys
+  async listApiKeys(wsId) {
+    const res = await fetchApi(`/workspaces/${wsId}/api-keys`);
+    return safeJson(res, { keys: [] });
+  },
+
+  async createApiKey(wsId, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/api-keys`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to create API key' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  async revokeApiKey(wsId, keyId) {
+    const res = await fetchApi(`/workspaces/${wsId}/api-keys/${keyId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to revoke API key' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  // AI Config
+  async getAiConfig(wsId) {
+    const res = await fetchApi(`/workspaces/${wsId}/ai-config`);
+    return safeJson(res, { aiConfig: { provider: 'cortex', hasApiKey: false, defaultModel: null, endpointUrl: null } });
+  },
+
+  async updateAiConfig(wsId, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/ai-config`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to update AI config' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  // Models
+  async listModels(wsId) {
+    const res = await fetchApi(`/workspaces/${wsId}/models`);
+    return safeJson(res, { models: [] });
+  },
+
+  async addModel(wsId, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/models`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to add model' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  async updateModel(wsId, modelId, data) {
+    const res = await fetchApi(`/workspaces/${wsId}/models/${modelId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to update model' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  async removeModel(wsId, modelId) {
+    const res = await fetchApi(`/workspaces/${wsId}/models/${modelId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await safeJson(res, { error: 'Failed to remove model' });
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  // Platform models (available across all workspaces)
+  async listPlatformModels() {
+    const res = await fetchApi('/platform/models');
+    return safeJson(res, { models: [] });
   },
 };

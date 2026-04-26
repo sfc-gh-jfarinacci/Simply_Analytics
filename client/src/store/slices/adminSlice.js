@@ -2,14 +2,24 @@ import { setupApi } from '../../api/modules/setupApi';
 import { adminApi } from '../../api/modules/adminApi';
 import { authApi } from '../../api/modules/authApi';
 
+function _triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
 export const createAdminSlice = (set, get) => ({
   // Setup / provisioning state
-  setupProgress: null,     // { steps[], currentStep, complete }
-  setupMasterKey: null,
+  setupProgress: null,
   setupMigrationLogs: [],
   setupMigrationResult: null,
   setupLoading: false,
   setupError: null,
+  bundledPg: null,
 
   // Admin panel state
   adminConfig: null,
@@ -19,11 +29,10 @@ export const createAdminSlice = (set, get) => ({
   adminLoading: false,
   adminError: null,
 
-  // Data migration state (backend-to-backend)
-  dataMigrationLogs: [],
-  dataMigrationProgress: null,
-  dataMigrationComplete: false,
-  dataMigrationRunning: false,
+  // Backup state
+  backups: [],
+  backupStats: null,
+  backupLoading: false,
 
   // Emergency mode DB status
   emergencyDbStatus: null,
@@ -40,16 +49,39 @@ export const createAdminSlice = (set, get) => ({
     }
   },
 
-  fetchMasterKey: async () => {
+  detectBundledPg: async () => {
     try {
-      const data = await setupApi.getMasterKey();
-      if (data.revealed) {
-        set({ setupMasterKey: data.masterKey });
-      }
-      return data;
+      const result = await setupApi.detectBundledPg();
+      set({ bundledPg: result });
+      return result;
+    } catch (_) {
+      return { detected: false };
+    }
+  },
+
+  downloadRecoveryKey: async () => {
+    try {
+      const blob = await setupApi.downloadRecoveryKey();
+      _triggerDownload(blob, 'simply-analytics-recovery.key');
+      return true;
     } catch (err) {
       set({ setupError: err.message });
-      return null;
+      return false;
+    }
+  },
+
+  restoreFromBackup: async (backupFile, recoveryKeyFile) => {
+    set({ setupLoading: true, setupError: null });
+    try {
+      const result = await setupApi.restore(backupFile, recoveryKeyFile);
+      set({ setupLoading: false });
+      if (result.success && result.blob) {
+        _triggerDownload(result.blob, 'simply-analytics-recovery.key');
+      }
+      return result;
+    } catch (err) {
+      set({ setupLoading: false, setupError: err.message });
+      return { error: err.message };
     }
   },
 
@@ -57,6 +89,18 @@ export const createAdminSlice = (set, get) => ({
     set({ setupLoading: true, setupError: null });
     try {
       const result = await setupApi.testDatabase(config);
+      set({ setupLoading: false });
+      return result;
+    } catch (err) {
+      set({ setupLoading: false, setupError: err.message });
+      return { success: false, message: err.message };
+    }
+  },
+
+  provisionDatabase: async (config) => {
+    set({ setupLoading: true, setupError: null });
+    try {
+      const result = await setupApi.provisionDatabase(config);
       set({ setupLoading: false });
       return result;
     } catch (err) {
@@ -137,7 +181,6 @@ export const createAdminSlice = (set, get) => ({
     try {
       const result = await adminApi.updateConfigSection(section, values);
       set({ adminLoading: false });
-      // Reload full config to reflect changes
       const config = await adminApi.getConfig();
       set({ adminConfig: config });
       return result;
@@ -193,54 +236,107 @@ export const createAdminSlice = (set, get) => ({
     }
   },
 
-  // Data migration actions
-  testMigrationTarget: async (destConfig) => {
+  // Postgres password rotation
+  rotatePgPassword: async (currentPassword, newPassword) => {
     set({ adminLoading: true, adminError: null });
     try {
-      const result = await adminApi.testMigrationTarget(destConfig);
-      set({ adminLoading: false });
-      return result;
-    } catch (err) {
-      set({ adminLoading: false });
-      return { success: false, message: err.message };
-    }
-  },
-
-  startDataMigration: async (destConfig) => {
-    set({ dataMigrationLogs: [], dataMigrationProgress: null, dataMigrationComplete: false, dataMigrationRunning: true });
-    await adminApi.migrateData(
-      destConfig,
-      (progress) => set((s) => ({
-        dataMigrationLogs: [...s.dataMigrationLogs, progress.message],
-        dataMigrationProgress: progress,
-      })),
-      (result) => set({ dataMigrationComplete: true, dataMigrationRunning: false, dataMigrationProgress: result }),
-      (errMsg) => set((s) => ({
-        dataMigrationLogs: [...s.dataMigrationLogs, `ERROR: ${errMsg}`],
-        dataMigrationRunning: false,
-        adminError: errMsg,
-      })),
-    );
-  },
-
-  switchBackend: async (destConfig) => {
-    set({ adminLoading: true, adminError: null });
-    try {
-      const result = await adminApi.switchBackend(destConfig);
+      const result = await adminApi.rotatePgPassword(currentPassword, newPassword);
       set({ adminLoading: false });
       return result;
     } catch (err) {
       set({ adminLoading: false, adminError: err.message });
-      return { success: false, message: err.message };
+      return { error: err.message };
     }
   },
 
-  resetDataMigration: () => set({
-    dataMigrationLogs: [],
-    dataMigrationProgress: null,
-    dataMigrationComplete: false,
-    dataMigrationRunning: false,
-  }),
+  // Backup actions
+  loadBackups: async () => {
+    set({ backupLoading: true });
+    try {
+      const data = await adminApi.getBackups();
+      set({ backups: data.backups || [], backupStats: data.stats || null, backupLoading: false });
+      return data;
+    } catch (err) {
+      set({ backupLoading: false, adminError: err.message });
+      return null;
+    }
+  },
+
+  triggerBackup: async () => {
+    set({ backupLoading: true });
+    try {
+      const result = await adminApi.createBackup();
+      set({ backupLoading: false });
+      if (result.success) {
+        const data = await adminApi.getBackups();
+        set({ backups: data.backups || [], backupStats: data.stats || null });
+      }
+      return result;
+    } catch (err) {
+      set({ backupLoading: false, adminError: err.message });
+      return { error: err.message };
+    }
+  },
+
+  downloadBackup: async (id, filename) => {
+    try {
+      const blob = await adminApi.downloadBackup(id);
+      _triggerDownload(blob, filename || `simply-backup-${id}.tar.gz`);
+      return true;
+    } catch (err) {
+      set({ adminError: err.message });
+      return false;
+    }
+  },
+
+  removeBackup: async (id) => {
+    try {
+      await adminApi.deleteBackup(id);
+      const data = await adminApi.getBackups();
+      set({ backups: data.backups || [], backupStats: data.stats || null });
+      return true;
+    } catch (err) {
+      set({ adminError: err.message });
+      return false;
+    }
+  },
+
+  adminRestoreBackup: async (backupFile, recoveryKeyFile) => {
+    set({ adminLoading: true, adminError: null });
+    try {
+      const result = await adminApi.restoreBackup(backupFile, recoveryKeyFile);
+      set({ adminLoading: false });
+      return result;
+    } catch (err) {
+      set({ adminLoading: false, adminError: err.message });
+      return { error: err.message };
+    }
+  },
+
+  // Recovery key and master key rotation
+  adminDownloadRecoveryKey: async () => {
+    try {
+      const blob = await adminApi.downloadRecoveryKey();
+      _triggerDownload(blob, 'simply-analytics-recovery.key');
+      return true;
+    } catch (err) {
+      set({ adminError: err.message });
+      return false;
+    }
+  },
+
+  adminRotateMasterKey: async () => {
+    set({ adminLoading: true, adminError: null });
+    try {
+      const blob = await adminApi.rotateMasterKey();
+      _triggerDownload(blob, 'simply-analytics-recovery.key');
+      set({ adminLoading: false });
+      return { success: true };
+    } catch (err) {
+      set({ adminLoading: false, adminError: err.message });
+      return { error: err.message };
+    }
+  },
 
   checkDbStatus: async () => {
     try {

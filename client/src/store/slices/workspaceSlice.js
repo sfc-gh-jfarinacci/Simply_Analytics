@@ -73,9 +73,7 @@ export const createWorkspaceSlice = (set, get) => ({
         askWorkspaceConnections: [],
         askActiveConnectionId: null,
         askWorkspaceViews: [],
-        askWorkspaceAgents: [],
-        askActiveViewFqn: null,
-        askActiveAgentFqn: null,
+        askSelectedViewFqn: null,
       });
       return;
     }
@@ -93,9 +91,7 @@ export const createWorkspaceSlice = (set, get) => ({
       askWorkspaceConnections: [],
       askActiveConnectionId: null,
       askWorkspaceViews: [],
-      askWorkspaceAgents: [],
-      askActiveViewFqn: null,
-      askActiveAgentFqn: null,
+      askSelectedViewFqn: null,
     });
 
     get().loadDashboards();

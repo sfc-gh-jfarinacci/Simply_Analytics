@@ -1,13 +1,17 @@
 import snowflake from 'snowflake-sdk';
+import { acquire as acquireSemaphore } from '../services/querySemaphore.js';
 
 // Verbose logging toggle - set VERBOSE_LOGS=true to enable debug logs
 const VERBOSE = process.env.VERBOSE_LOGS === 'true';
-const log = (...args) => VERBOSE && log(...args);
+const log = (...args) => VERBOSE && console.log('[sfSession]', ...args);
 
 // Dashboard connection cache - keyed by `sessionId:connectionId`
 // Each browser session gets its own cached connections
 // Stores { connection, lastUsed, connectionId, sessionId, currentRole, currentWarehouse }
 const dashboardConnections = new Map();
+
+// Simple connection store for ad-hoc (non-dashboard) connections
+const connections = new Map();
 
 // Pending connection promises to prevent race conditions
 // Multiple requests for same session+connection will wait for the same connection
@@ -19,7 +23,7 @@ const pendingConnections = new Map();
 const bannedConnectionIds = new Set();
 
 // Connection limits
-const MAX_CONNECTIONS = 10;  // Maximum concurrent connections
+const MAX_CONNECTIONS = parseInt(process.env.MAX_SF_CONNECTIONS || '200', 10);
 const CONNECTION_IDLE_TIMEOUT = 10 * 60 * 1000;  // 10 minutes idle timeout
 
 // Cleanup interval - check for idle connections every minute
@@ -91,7 +95,7 @@ async function switchRoleAndWarehouseIfNeeded(connection, cached, targetRole, ta
     // Switch role if different
     if (targetRole && cached.currentRole !== targetRole) {
       log(`Switching role from ${cached.currentRole} to ${targetRole}`);
-      await executeQuery(connection, `USE ROLE "${targetRole}"`);
+      await _rawExecuteQuery(connection, `USE ROLE "${targetRole}"`);
       cached.currentRole = targetRole;
       switched = true;
     }
@@ -99,7 +103,7 @@ async function switchRoleAndWarehouseIfNeeded(connection, cached, targetRole, ta
     // Switch warehouse if different
     if (targetWarehouse && cached.currentWarehouse !== targetWarehouse) {
       log(`Switching warehouse from ${cached.currentWarehouse} to ${targetWarehouse}`);
-      await executeQuery(connection, `USE WAREHOUSE "${targetWarehouse}"`);
+      await _rawExecuteQuery(connection, `USE WAREHOUSE "${targetWarehouse}"`);
       cached.currentWarehouse = targetWarehouse;
       switched = true;
     }
@@ -252,7 +256,7 @@ export async function getDashboardConnection(sessionId, connectionId, connection
       if (targetRole) {
         try {
           log(`Setting initial role to: ${targetRole}`);
-          await executeQuery(connection, `USE ROLE "${targetRole}"`);
+          await _rawExecuteQuery(connection, `USE ROLE "${targetRole}"`);
           actualRole = targetRole;
         } catch (roleError) {
           console.warn(`Failed to set initial role ${targetRole}:`, roleError.message);
@@ -263,7 +267,7 @@ export async function getDashboardConnection(sessionId, connectionId, connection
       if (targetWarehouse) {
         try {
           log(`Setting initial warehouse to: ${targetWarehouse}`);
-          await executeQuery(connection, `USE WAREHOUSE "${targetWarehouse}"`);
+          await _rawExecuteQuery(connection, `USE WAREHOUSE "${targetWarehouse}"`);
           actualWarehouse = targetWarehouse;
         } catch (whError) {
           console.warn(`Failed to set initial warehouse ${targetWarehouse}:`, whError.message);
@@ -502,9 +506,8 @@ snowflake.configure({
   keepAlive: false,
 });
 
-// Disable SSL validation for corporate proxy/VPN environments
-if (process.env.NODE_ENV !== 'production' || process.env.SNOWFLAKE_INSECURE_CONNECT === 'true') {
-  // Disable Node.js TLS verification for development
+// Disable SSL validation ONLY in development (never in production)
+if (process.env.NODE_ENV !== 'production') {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   console.warn('⚠️  Running with insecure SSL (development mode)');
 }
@@ -633,9 +636,9 @@ export function removeConnection(id) {
 }
 
 /**
- * Execute a SQL query
+ * Raw query execution (no concurrency control).
  */
-export function executeQuery(connection, sql, binds = []) {
+function _rawExecuteQuery(connection, sql, binds = []) {
   return new Promise((resolve, reject) => {
     connection.execute({
       sqlText: sql,
@@ -645,7 +648,6 @@ export function executeQuery(connection, sql, binds = []) {
           console.error('Query execution failed:', err);
           reject(err);
         } else {
-          // Get column metadata
           const columns = stmt.getColumns().map((col) => ({
             name: col.getName(),
             type: col.getType(),
@@ -658,6 +660,33 @@ export function executeQuery(connection, sql, binds = []) {
       },
     });
   });
+}
+
+const QUERY_TIMEOUT_MS = parseInt(process.env.QUERY_TIMEOUT_MS || '120000', 10);
+
+/**
+ * Execute a SQL query with concurrency semaphore and timeout.
+ * @param {object} connection - Snowflake connection
+ * @param {string} sql
+ * @param {Array} binds
+ * @param {{ interactive?: boolean, lane?: string }} opts - lane: 'dashboard' | 'ai' | 'batch', or interactive: true as shorthand for dashboard
+ */
+export async function executeQuery(connection, sql, binds = [], opts = {}) {
+  const lane = opts.lane || (opts.interactive ? 'dashboard' : 'batch');
+  const release = await acquireSemaphore(lane);
+  let timer;
+  try {
+    const result = await Promise.race([
+      _rawExecuteQuery(connection, sql, binds),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Query timed out')), QUERY_TIMEOUT_MS);
+      }),
+    ]);
+    return result;
+  } finally {
+    clearTimeout(timer);
+    release();
+  }
 }
 
 /**

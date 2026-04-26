@@ -1,69 +1,95 @@
 import { buildQueryDirect } from '../utils/queryBuilder.js';
+import { complete as llmComplete, stripCodeFences } from './llmProvider.js';
+import { executeQuery as _execQuery } from '../db/dashboardSessionManager.js';
 
-function executeQuery(connection, sql) {
-  return new Promise((resolve, reject) => {
-    connection.execute({
-      sqlText: sql,
-      complete: (err, stmt, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+async function executeQuery(connection, sql) {
+  const result = await _execQuery(connection, sql, [], { lane: 'ai' });
+  return result.rows;
+}
+
+const EXPLORER_NATIVE_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'query_data',
+      description: 'Run a query against a semantic view. Returns rows of data.',
+      parameters: {
+        type: 'object',
+        properties: {
+          semanticView: { type: 'string', description: 'Fully qualified semantic view name (DATABASE.SCHEMA.VIEW)' },
+          dimensions: { type: 'array', items: { type: 'string' }, description: 'Dimension field names' },
+          measures: { type: 'array', items: {}, description: 'Measure fields with aggregations, e.g. [{"name":"REVENUE","aggregation":"SUM"}]' },
+          filters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+                operator: { type: 'string', enum: ['=', '!=', '>', '<', '>=', '<=', 'IN', 'NOT IN', 'LIKE', 'BETWEEN'] },
+                value: { description: 'Filter value (use with most operators and as start value for BETWEEN)' },
+                value2: { description: 'End value for BETWEEN operator' },
+                values: { type: 'array', description: 'Array of values for IN/NOT IN operators' },
+              },
+              required: ['field', 'operator'],
+            },
+            description: 'Filters. For dates use BETWEEN: {"field":"ORDER_DATE","operator":"BETWEEN","value":"1998-01-01","value2":"1998-12-31"}'
+          },
+          limit: { type: 'number', description: 'Max rows to return (default 20)' },
+        },
+        required: ['semanticView'],
       },
-    });
-  });
-}
-
-function escapeForSnowflake(str) {
-  return str.replace(/'/g, "''");
-}
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_cardinality',
+      description: 'Count distinct values for a dimension field.',
+      parameters: {
+        type: 'object',
+        properties: {
+          semanticView: { type: 'string', description: 'Fully qualified semantic view name' },
+          field: { type: 'string', description: 'Dimension field name to check' },
+        },
+        required: ['semanticView', 'field'],
+      },
+    },
+  },
+];
 
 const EXPLORER_SYSTEM_PROMPT = `You are a data analyst AI embedded in Simply Analytics.
 The user asks business questions and you investigate the data to answer them.
 
-## TOOLS
+## TOOL USAGE
 You have tools to query data:
+- query_data(semanticView, dimensions?, measures?, filters?, limit?) — run a query and get rows
+- check_cardinality(semanticView, field) — count distinct values for a field
 
-- query_data: Run a query against a semantic view. Returns rows of data.
-  Parameters: { semanticView: string, dimensions: string[], measures: [{name, aggregation}], filters: [{field, operator, value}], limit: number }
+All tools support a "filters" array: [{"field":"X","operator":"=","value":"Y"}]
+For date filtering by year, use BETWEEN: {"field":"ORDER_DATE","operator":"BETWEEN","value":"1998-01-01","value2":"1998-12-31"}
+NEVER use LIKE on date fields — always use BETWEEN or >= / < with date strings.
 
-- check_cardinality: Count distinct values for a field.
-  Parameters: { semanticView: string, field: string }
+You can call multiple tools in parallel to speed up analysis.
+Always query real data before making claims about numbers or trends.
+TRUST the data returned by tools — never question, doubt, or second-guess tool results.
 
 ## RESPONSE FORMAT
-Respond with valid JSON. Two types:
-
-### Type 1: Tool call
+After gathering data, respond with valid JSON:
 {
-  "type": "tool_call",
-  "tool": "query_data" | "check_cardinality",
-  "args": { ... },
-  "thinking": "Why you're making this query"
-}
-
-### Type 2: Final answer
-{
-  "type": "answer",
   "summary": "A clear, concise answer to the user's question (2-5 sentences)",
   "findings": [
     { "label": "Finding title", "detail": "Detail text", "type": "insight" | "trend" | "anomaly" | "comparison" }
   ],
-  "suggestedWidget": null | {
-    "title": "Widget title",
-    "type": "bar" | "line" | "pie" | ...,
-    "semanticView": "DB.SCHEMA.VIEW",
-    "fields": [
-      { "name": "FIELD", "shelf": "columns" | "rows", "semanticType": "dimension" | "measure", "aggregation": null | "SUM" | "AVG" | ... }
-    ]
-  }
+  "suggestedWidget": null | { "title": "...", "type": "bar"|"line"|..., "semanticView": "...", "fields": [...] }
 }
 
 RULES:
-- Maximum 4 tool calls per question. Then give your best answer.
-- Always query real data before making claims about numbers or trends.
-- suggestedWidget should only be included when the data tells an interesting story worth visualizing.
 - Be precise with numbers. Don't make up values.
-- findings should be 2-4 items max, each a distinct observation.`;
+- findings should be 2-4 items max, each a distinct observation.
+- suggestedWidget only when the data tells an interesting story worth visualizing.
+- Respond with ONLY valid JSON. No text before or after.`;
 
-const MAX_ITERATIONS = 4;
+const MAX_TOOL_ROUNDS = 5;
 
 async function executeExplorerTool(connection, toolName, args) {
   const startTime = Date.now();
@@ -83,6 +109,7 @@ async function executeExplorerTool(connection, toolName, args) {
             field: f.field,
             operator: f.operator || '=',
             value: f.value,
+            value2: f.value2,
             values: f.values,
           })),
           limit: Math.min(parseInt(limit) || 20, 50),
@@ -120,8 +147,12 @@ export async function exploreData(connection, {
   question,
   semanticViewMetadata,
   conversationHistory = [],
-  model = 'claude-3-5-sonnet',
+  model = 'claude-sonnet-4-6',
   maxTokens = 4096,
+  provider,
+  apiKey,
+  endpointUrl,
+  connWithCreds,
 }) {
   const viewContext = (Array.isArray(semanticViewMetadata) ? semanticViewMetadata : [semanticViewMetadata])
     .filter(Boolean)
@@ -147,90 +178,51 @@ export async function exploreData(connection, {
     { role: 'user', content: question },
   ];
 
-  const toolSteps = [];
-  let iteration = 0;
+  const allToolSteps = [];
 
-  while (iteration < MAX_ITERATIONS) {
-    iteration++;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
-    const messagesStr = llmMessages.map(m =>
-      `{'role': '${m.role}', 'content': '${escapeForSnowflake(m.content)}'}`
-    ).join(', ');
+    const msgs = (isLastRound && allToolSteps.length > 0)
+      ? [...llmMessages, { role: 'user', content: 'You have gathered enough data. Now provide your final answer as JSON. Do NOT call any more tools.' }]
+      : llmMessages;
 
-    const sql = `
-      SELECT SNOWFLAKE.CORTEX.COMPLETE(
-        '${model}',
-        [${messagesStr}],
-        {'temperature': 0.3, 'max_tokens': ${maxTokens}}
-      ) as response
-    `;
+    const rawResponse = await llmComplete({
+      messages: msgs,
+      model, maxTokens, temperature: 0.3,
+      provider, apiKey, connWithCreds, endpointUrl,
+      tools: EXPLORER_NATIVE_TOOLS,
+    });
 
-    const result = await executeQuery(connection, sql);
-    let response = result[0]?.RESPONSE || result[0]?.response;
-
-    if (response && typeof response === 'object') {
-      if (response.choices?.[0]) {
-        response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-      } else if (response.content) {
-        response = response.content;
-      }
-    }
-    if (typeof response !== 'string') response = JSON.stringify(response);
-
-    const cleaned = response
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```\s*$/, '')
-      .trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return { summary: cleaned, findings: [], toolSteps, suggestedWidget: null };
-    }
-
-    if (parsed.type === 'tool_call' && parsed.tool) {
-      const toolStep = {
-        tool: parsed.tool,
-        args: parsed.args || {},
-        thinking: parsed.thinking || '',
-      };
-
-      const toolResult = await executeExplorerTool(connection, parsed.tool, parsed.args || {});
-      toolStep.result = toolResult;
-      toolSteps.push(toolStep);
-
-      const resultStr = JSON.stringify(toolResult, null, 2);
-      const truncated = resultStr.length > 4000
-        ? resultStr.substring(0, 4000) + '\n... (truncated)'
-        : resultStr;
-
-      llmMessages.push({
-        role: 'assistant',
-        content: JSON.stringify({ type: 'tool_call', tool: parsed.tool, args: parsed.args, thinking: parsed.thinking }),
-      });
-      llmMessages.push({
-        role: 'user',
-        content: `Tool result for ${parsed.tool}:\n${truncated}\n\nContinue investigating. ${MAX_ITERATIONS - iteration} tool calls remaining. Respond with another tool_call or your final answer.`,
-      });
+    if (typeof rawResponse === 'object' && rawResponse.tool_calls?.length) {
+      llmMessages.push({ role: 'assistant', content: null, tool_calls: rawResponse.tool_calls });
+      const toolResults = await Promise.all(
+        rawResponse.tool_calls.map(async (tc) => {
+          const fnName = tc.function.name;
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments); } catch { /* empty */ }
+          const result = await executeExplorerTool(connection, fnName, args);
+          allToolSteps.push({ tool: fnName, args, thinking: '', result });
+          return { tool_call_id: tc.id, role: 'tool', content: JSON.stringify(result) };
+        })
+      );
+      llmMessages.push(...toolResults);
       continue;
     }
+
+    const cleaned = stripCodeFences(typeof rawResponse === 'string' ? rawResponse : (rawResponse.content || ''));
+    let parsed;
+    try { parsed = JSON.parse(cleaned); } catch { return { summary: cleaned, findings: [], toolSteps: allToolSteps, suggestedWidget: null }; }
 
     return {
       summary: parsed.summary || parsed.message || cleaned,
       findings: parsed.findings || [],
       suggestedWidget: parsed.suggestedWidget || null,
-      toolSteps,
+      toolSteps: allToolSteps,
     };
   }
 
-  return {
-    summary: 'Reached the analysis limit. Here is what I found so far.',
-    findings: [],
-    suggestedWidget: null,
-    toolSteps,
-  };
+  return { summary: 'Reached the analysis limit. Here is what I found so far.', findings: [], suggestedWidget: null, toolSteps: allToolSteps };
 }
 
 export default { exploreData };

@@ -47,8 +47,11 @@ export function getMasterKeyHex() {
 }
 
 export function verifyMasterKey(candidateHex) {
-  const current = ensureMasterKey().toString('hex');
-  return candidateHex === current;
+  if (!candidateHex || typeof candidateHex !== 'string') return false;
+  const currentBuf = Buffer.from(ensureMasterKey().toString('hex'), 'utf8');
+  const candidateBuf = Buffer.from(candidateHex, 'utf8');
+  if (currentBuf.length !== candidateBuf.length) return false;
+  return crypto.timingSafeEqual(currentBuf, candidateBuf);
 }
 
 export function getMasterKeyPath() {
@@ -111,4 +114,98 @@ export function loadConfigFile() {
 
 export function configFileExists() {
   return fs.existsSync(getConfigFilePath());
+}
+
+/**
+ * Export the current master key as a downloadable recovery key file (JSON envelope).
+ * @returns {Buffer}
+ */
+export function exportRecoveryKeyFile() {
+  const hex = getMasterKeyHex();
+  const envelope = {
+    type: 'simply-analytics-recovery-key',
+    version: 1,
+    key: hex,
+    createdAt: new Date().toISOString(),
+  };
+  return Buffer.from(JSON.stringify(envelope, null, 2), 'utf8');
+}
+
+/**
+ * Parse a recovery key file buffer and return the master key hex.
+ * @param {Buffer} buffer
+ * @returns {string} hex key
+ */
+export function importRecoveryKeyFile(buffer) {
+  const str = buffer.toString('utf8');
+  const envelope = JSON.parse(str);
+  if (envelope.type !== 'simply-analytics-recovery-key') {
+    throw new Error('Invalid recovery key file format');
+  }
+  if (!envelope.key || !/^[0-9a-f]{64}$/i.test(envelope.key)) {
+    throw new Error('Recovery key file does not contain a valid key');
+  }
+  return envelope.key;
+}
+
+/**
+ * Decrypt config with the provided key hex (not necessarily the current master key).
+ * Used during restore to validate a foreign recovery key against a backup config.
+ */
+export function decryptConfigWithKey(envelope, keyHex) {
+  if (envelope.version !== CONFIG_VERSION) {
+    throw new Error(`Unsupported config version: ${envelope.version}`);
+  }
+  const key = Buffer.from(keyHex, 'hex');
+  const iv = Buffer.from(envelope.iv, 'hex');
+  const authTag = Buffer.from(envelope.authTag, 'hex');
+  const ciphertext = Buffer.from(envelope.ciphertext, 'base64');
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+  decipher.setAuthTag(authTag);
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return JSON.parse(decrypted.toString('utf8'));
+}
+
+/**
+ * Encrypt a plain config object with a specific key (not the in-memory master key).
+ */
+export function encryptConfigWithKey(plainObj, keyHex) {
+  const key = Buffer.from(keyHex, 'hex');
+  const plaintext = JSON.stringify(plainObj);
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return {
+    version: CONFIG_VERSION,
+    iv: iv.toString('hex'),
+    authTag: authTag.toString('hex'),
+    ciphertext: encrypted.toString('base64'),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Rotate the master key on disk. Generates a new 256-bit key, re-encrypts the
+ * config file, writes the new key to the key file, and updates in-memory state.
+ * @param {object} plainConfig - the decrypted config object
+ * @returns {string} the new master key hex
+ */
+export function rotateMasterKeyOnDisk(plainConfig) {
+  const newKey = crypto.randomBytes(32);
+  const newHex = newKey.toString('hex');
+
+  // Write new key file
+  const keyPath = getMasterKeyPath();
+  fs.writeFileSync(keyPath, newHex, { mode: 0o600 });
+
+  // Update in-memory master key
+  _masterKey = newKey;
+
+  // Re-encrypt config with new key
+  saveConfigFile(plainConfig);
+
+  console.log('[config] Master key rotated successfully');
+  return newHex;
 }

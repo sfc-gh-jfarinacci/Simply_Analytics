@@ -73,14 +73,6 @@ const DashboardSettingsModal = ({ dashboard, isOpen, onClose, onSave }) => {
               removeSemanticView={s.removeSemanticView}
               semanticViewError={s.semanticViewError}
               errorViewName={s.errorViewName}
-              cortexAgentsEnabled={s.cortexAgentsEnabled}
-              setCortexAgentsEnabled={s.setCortexAgentsEnabled}
-              availableCortexAgents={s.availableCortexAgents}
-              cortexAgents={s.cortexAgents}
-              selectedCortexAgent={s.selectedCortexAgent}
-              setSelectedCortexAgent={s.setSelectedCortexAgent}
-              addCortexAgent={s.addCortexAgent}
-              removeCortexAgent={s.removeCortexAgent}
             />
           )}
 

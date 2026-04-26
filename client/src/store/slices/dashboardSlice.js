@@ -353,8 +353,6 @@ export const createDashboardSlice = (set, get) => ({
         filters: currentDashboard.filters || [],
         globalFilterFields: currentDashboard.globalFilterFields || [],
         semanticViewsReferenced: dashboardSemanticViews,
-        cortexAgentsEnabled: currentDashboard.cortexAgentsEnabled || false,
-        cortexAgents: currentDashboard.cortexAgents || [],
         customColorSchemes: currentDashboard.customColorSchemes || [],
       };
       
@@ -370,8 +368,6 @@ export const createDashboardSlice = (set, get) => ({
         tabs: currentDashboard.tabs,
         globalFilterFields: currentDashboard.globalFilterFields || [],
         semanticViewsReferenced: dashboardSemanticViews,
-        cortexAgentsEnabled: currentDashboard.cortexAgentsEnabled || false,
-        cortexAgents: currentDashboard.cortexAgents || [],
         customColorSchemes: currentDashboard.customColorSchemes || [],
       };
       
@@ -447,8 +443,6 @@ export const createDashboardSlice = (set, get) => ({
         filters: updatedDashboard.filters || [],
         globalFilterFields: updatedDashboard.globalFilterFields || [],
         semanticViewsReferenced: settings.semanticViewsReferenced || updatedDashboard.semanticViewsReferenced || [],
-        cortexAgentsEnabled: settings.cortexAgentsEnabled ?? updatedDashboard.cortexAgentsEnabled ?? false,
-        cortexAgents: settings.cortexAgents || updatedDashboard.cortexAgents || [],
         customColorSchemes: settings.customColorSchemes || updatedDashboard.customColorSchemes || [],
       };
       
@@ -464,8 +458,6 @@ export const createDashboardSlice = (set, get) => ({
         filters: updatedDashboard.filters,
         globalFilterFields: updatedDashboard.globalFilterFields || [],
         semanticViewsReferenced: settings.semanticViewsReferenced || updatedDashboard.semanticViewsReferenced,
-        cortexAgentsEnabled: settings.cortexAgentsEnabled ?? updatedDashboard.cortexAgentsEnabled ?? false,
-        cortexAgents: settings.cortexAgents || updatedDashboard.cortexAgents || [],
         customColorSchemes: settings.customColorSchemes || updatedDashboard.customColorSchemes || [],
       };
       

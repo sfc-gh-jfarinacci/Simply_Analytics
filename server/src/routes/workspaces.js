@@ -64,20 +64,20 @@ workspaceRoutes.get('/:id', async (req, res) => {
     const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
     if (!access) return res.status(404).json({ error: 'Workspace not found' });
 
-    const [views, agents, members, connections] = await Promise.all([
+    const [views, members, connections, endpoints] = await Promise.all([
       workspaceService.getWorkspaceViews(req.params.id),
-      workspaceService.getWorkspaceAgents(req.params.id),
       workspaceService.getWorkspaceMembers(req.params.id),
       workspaceService.getWorkspaceConnections(req.params.id),
+      workspaceService.getWorkspaceEndpoints(req.params.id),
     ]);
 
     res.json({
       workspace: access.workspace,
       accessLevel: access.accessLevel,
       semanticViews: views,
-      agents,
       members,
       connections,
+      endpoints,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -404,53 +404,112 @@ workspaceRoutes.delete('/:id/views/:viewId', async (req, res) => {
   }
 });
 
-// ── Agents (owner/admin only) ────────────────────────────────
+// ── AI Config (owner/admin only) ─────────────────────────────
 
-workspaceRoutes.post('/:id/agents', async (req, res) => {
+workspaceRoutes.get('/:id/ai-config', async (req, res) => {
   try {
     const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
     if (!access) return res.status(404).json({ error: 'Workspace not found' });
-    if (!['owner', 'admin'].includes(access.accessLevel)) {
-      return res.status(403).json({ error: 'Only workspace owner or admin can manage agents' });
-    }
 
-    const { agentFqn, label, workspaceConnectionId } = req.body;
-    if (!agentFqn?.trim()) return res.status(400).json({ error: 'Agent FQN is required' });
-    if (!workspaceConnectionId) return res.status(400).json({ error: 'workspaceConnectionId is required' });
-
-    const agents = await workspaceService.addWorkspaceAgent(req.params.id, workspaceConnectionId, agentFqn, label);
-    res.status(201).json({ agents });
-  } catch (err) {
-    if (err.message?.includes('unique')) {
-      return res.status(409).json({ error: 'That agent is already added' });
-    }
-    res.status(500).json({ error: err.message });
-  }
-});
-
-workspaceRoutes.patch('/:id/agents/:agentId', async (req, res) => {
-  try {
-    const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
-    if (!access) return res.status(404).json({ error: 'Workspace not found' });
-    if (!['owner', 'admin'].includes(access.accessLevel)) {
-      return res.status(403).json({ error: 'Only workspace owner or admin can update agents' });
-    }
-    const result = await workspaceService.updateWorkspaceAgent(req.params.agentId, req.params.id, req.body);
-    res.json(result);
+    const config = await workspaceService.getAiConfig(req.params.id);
+    res.json({ aiConfig: config });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-workspaceRoutes.delete('/:id/agents/:agentId', async (req, res) => {
+workspaceRoutes.put('/:id/ai-config', async (req, res) => {
   try {
     const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
     if (!access) return res.status(404).json({ error: 'Workspace not found' });
     if (!['owner', 'admin'].includes(access.accessLevel)) {
-      return res.status(403).json({ error: 'Only workspace owner or admin can manage agents' });
+      return res.status(403).json({ error: 'Only workspace owner or admin can update AI config' });
     }
 
-    await workspaceService.removeWorkspaceAgent(req.params.agentId, req.params.id);
+    const { provider, apiKey, defaultModel, endpointUrl } = req.body;
+    const config = await workspaceService.setAiConfig(req.params.id, { provider, apiKey, defaultModel, endpointUrl });
+    res.json({ aiConfig: config });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Models (owner/admin only) ────────────────────────────────
+
+workspaceRoutes.get('/:id/models', async (req, res) => {
+  try {
+    const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
+    if (!access) return res.status(404).json({ error: 'Workspace not found' });
+
+    const models = await workspaceService.listWorkspaceModels(req.params.id);
+    res.json({ models });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+workspaceRoutes.post('/:id/models', async (req, res) => {
+  try {
+    const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
+    if (!access) return res.status(404).json({ error: 'Workspace not found' });
+    if (!['owner', 'admin'].includes(access.accessLevel)) {
+      return res.status(403).json({ error: 'Only workspace owner or admin can manage models' });
+    }
+
+    const { modelId, displayName, provider, description, contextWindow,
+      capabilities, isDefault, endpointUrl, apiKey } = req.body;
+
+    if (!modelId?.trim() || !displayName?.trim() || !provider?.trim()) {
+      return res.status(400).json({ error: 'modelId, displayName, and provider are required' });
+    }
+
+    const model = await workspaceService.addWorkspaceModel(req.params.id, {
+      modelId: modelId.trim(),
+      displayName: displayName.trim(),
+      provider: provider.trim(),
+      description,
+      contextWindow,
+      capabilities,
+      isDefault,
+      endpointUrl,
+      apiKey,
+      addedBy: req.user.id,
+    });
+
+    res.status(201).json({ model });
+  } catch (err) {
+    if (err.message?.includes('unique') || err.message?.includes('duplicate')) {
+      return res.status(409).json({ error: 'That model is already added to this workspace' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+workspaceRoutes.patch('/:id/models/:modelId', async (req, res) => {
+  try {
+    const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
+    if (!access) return res.status(404).json({ error: 'Workspace not found' });
+    if (!['owner', 'admin'].includes(access.accessLevel)) {
+      return res.status(403).json({ error: 'Only workspace owner or admin can update models' });
+    }
+
+    const model = await workspaceService.updateWorkspaceModel(req.params.modelId, req.params.id, req.body);
+    if (!model) return res.status(404).json({ error: 'Model not found' });
+    res.json({ model });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+workspaceRoutes.delete('/:id/models/:modelId', async (req, res) => {
+  try {
+    const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
+    if (!access) return res.status(404).json({ error: 'Workspace not found' });
+    if (!['owner', 'admin'].includes(access.accessLevel)) {
+      return res.status(403).json({ error: 'Only workspace owner or admin can manage models' });
+    }
+
+    await workspaceService.removeWorkspaceModel(req.params.modelId, req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -7,42 +7,29 @@ import {
   saveConfigFile,
   loadConfigFile,
   configFileExists,
+  exportRecoveryKeyFile,
+  importRecoveryKeyFile,
+  rotateMasterKeyOnDisk,
 } from './configEncryption.js';
 
 const SENSITIVE_KEYS = new Set([
   'POSTGRES_PASSWORD',
   'JWT_SECRET',
   'CREDENTIALS_ENCRYPTION_KEY',
-  'SF_SERVICE_PASSWORD',
-  'SF_SERVICE_PRIVATE_KEY_PASS',
-  'SF_SERVICE_TOKEN',
   'SAML_CERT',
-  'SCIM_BEARER_TOKEN',
-  'SNOWFLAKE_OAUTH_CLIENT_SECRET',
   'REDIS_URL',
 ]);
 
 const SENSITIVE_MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
 
-// Keys that cannot be changed via the normal config update flow.
-// To change these, the owner must use the migration wizard (switchBackend).
 const IMMUTABLE_DB_KEYS = new Set([
-  'METADATA_BACKEND',
   'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB',
-  'SF_SERVICE_ACCOUNT', 'SF_SERVICE_DATABASE', 'SF_SERVICE_SCHEMA',
-  'SF_SERVICE_WAREHOUSE', 'SF_SERVICE_ROLE',
 ]);
 
 const SECTION_KEYS = {
-  server: ['NODE_ENV', 'PORT', 'CORS_ORIGINS', 'FRONTEND_URL', 'RATE_LIMIT_MAX', 'VERBOSE_LOGS'],
+  server: ['NODE_ENV', 'PORT', 'CORS_ORIGINS', 'FRONTEND_URL', 'VERBOSE_LOGS'],
   database: [
-    'METADATA_BACKEND',
     'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD',
-    'SF_SERVICE_ACCOUNT', 'SF_SERVICE_USER', 'SF_SERVICE_AUTH_TYPE',
-    'SF_SERVICE_PASSWORD', 'SF_SERVICE_PRIVATE_KEY_PATH', 'SF_SERVICE_PRIVATE_KEY_PASS',
-    'SF_SERVICE_TOKEN', 'SF_SERVICE_ROLE', 'SF_SERVICE_WAREHOUSE',
-    'SF_SERVICE_DATABASE', 'SF_SERVICE_SCHEMA',
-    'SNOWFLAKE_INSECURE_CONNECT',
   ],
   redis: ['REDIS_URL', 'REDIS_SESSION_PREFIX', 'SESSION_TTL_SECONDS', 'DISABLE_REDIS'],
   security: [
@@ -50,10 +37,10 @@ const SECTION_KEYS = {
     'PASSWORD_MIN_LENGTH', 'PASSWORD_REQUIRE_UPPERCASE', 'PASSWORD_REQUIRE_LOWERCASE',
     'PASSWORD_REQUIRE_NUMBER', 'PASSWORD_REQUIRE_SPECIAL',
     'APP_NAME', 'WEBAUTHN_RP_ID', 'WEBAUTHN_ORIGIN',
+    'RATE_LIMIT_MAX',
   ],
   sso: [
     'SSO_ENABLED', 'SAML_ENTRYPOINT', 'SAML_ISSUER', 'SAML_CERT', 'SAML_CALLBACK_URL',
-    'SNOWFLAKE_OAUTH_CLIENT_ID', 'SNOWFLAKE_OAUTH_CLIENT_SECRET', 'SNOWFLAKE_OAUTH_REDIRECT_URI', 'SNOWFLAKE_ACCOUNT',
   ],
   scim: ['SCIM_ENABLED', 'SCIM_BEARER_TOKEN'],
 };
@@ -63,7 +50,6 @@ class ConfigStore extends EventEmitter {
     super();
     this._config = {};
     this._configured = false;
-    this._masterKeyShown = false;
   }
 
   /**
@@ -177,34 +163,28 @@ class ConfigStore extends EventEmitter {
   /** Returns which provisioning steps are complete (inferred from config state). */
   async getSetupProgress() {
     const cfg = this._config;
-    const backend = cfg.METADATA_BACKEND || null;
 
-    const database = !!(backend && (
-      (backend === 'postgres' && cfg.POSTGRES_HOST && cfg.POSTGRES_USER) ||
-      (backend === 'snowflake' && cfg.SF_SERVICE_ACCOUNT && cfg.SF_SERVICE_USER)
-    ));
+    const database = !!(cfg.POSTGRES_HOST && cfg.POSTGRES_USER);
 
     const security = !!(cfg.JWT_SECRET && cfg.CREDENTIALS_ENCRYPTION_KEY);
 
     let migrations = false;
     if (database && security) {
       try {
-        if (backend === 'postgres') {
-          const pg = await import('pg');
-          const pool = new pg.default.Pool({
-            host: cfg.POSTGRES_HOST,
-            port: parseInt(cfg.POSTGRES_PORT || '5432'),
-            database: cfg.POSTGRES_DB || 'simply_analytics',
-            user: cfg.POSTGRES_USER,
-            password: cfg.POSTGRES_PASSWORD,
-            connectionTimeoutMillis: 3000,
-          });
-          const check = await pool.query(
-            `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') as ok`
-          );
-          migrations = check.rows[0]?.ok === true;
-          await pool.end();
-        }
+        const pgMod = await import('pg');
+        const pool = new pgMod.default.Pool({
+          host: cfg.POSTGRES_HOST,
+          port: parseInt(cfg.POSTGRES_PORT || '5432'),
+          database: cfg.POSTGRES_DB || 'simply_analytics',
+          user: cfg.POSTGRES_USER,
+          password: cfg.POSTGRES_PASSWORD,
+          connectionTimeoutMillis: 3000,
+        });
+        const check = await pool.query(
+          `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') as ok`
+        );
+        migrations = check.rows[0]?.ok === true;
+        await pool.end();
       } catch (_) {}
     }
 
@@ -232,21 +212,11 @@ class ConfigStore extends EventEmitter {
    */
   async switchBackend(newConfig) {
     const keyMap = {
-      backend: 'METADATA_BACKEND',
       host: 'POSTGRES_HOST',
       port: 'POSTGRES_PORT',
       database: 'POSTGRES_DB',
       user: 'POSTGRES_USER',
       password: 'POSTGRES_PASSWORD',
-      // Snowflake keys
-      account: 'SF_SERVICE_ACCOUNT',
-      sfUser: 'SF_SERVICE_USER',
-      authType: 'SF_SERVICE_AUTH_TYPE',
-      sfPassword: 'SF_SERVICE_PASSWORD',
-      warehouse: 'SF_SERVICE_WAREHOUSE',
-      sfRole: 'SF_SERVICE_ROLE',
-      sfDatabase: 'SF_SERVICE_DATABASE',
-      sfSchema: 'SF_SERVICE_SCHEMA',
     };
 
     const changedKeys = [];
@@ -266,14 +236,23 @@ class ConfigStore extends EventEmitter {
     return changedKeys;
   }
 
-  /** Master key hex — only returned once per server lifetime. */
-  getMasterKeyOnce() {
-    if (this._masterKeyShown) return null;
-    this._masterKeyShown = true;
-    return getMasterKeyHex();
+  /** Returns the recovery key file as a Buffer (downloadable). */
+  getRecoveryKeyFile() {
+    return exportRecoveryKeyFile();
   }
 
-  /** Allow verification without revealing the key again. */
+  /**
+   * Rotate the master key: decrypt config with old key, re-encrypt with new key.
+   * Returns { newRecoveryKeyBuffer, oldKeyHex, newKeyHex }.
+   */
+  rotateMasterKey() {
+    const oldKeyHex = getMasterKeyHex();
+    const newKeyHex = rotateMasterKeyOnDisk(this._config);
+    const newRecoveryKeyBuffer = exportRecoveryKeyFile();
+    return { newRecoveryKeyBuffer, oldKeyHex, newKeyHex };
+  }
+
+  /** Allow verification without revealing the key. */
   verifyMasterKey(hex) {
     return verifyMasterKey(hex);
   }

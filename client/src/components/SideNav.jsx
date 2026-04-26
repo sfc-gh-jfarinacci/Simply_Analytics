@@ -17,6 +17,7 @@ import {
   FiChevronDown,
   FiLayers,
   FiPlus,
+  FiBarChart2,
 } from 'react-icons/fi';
 import SimplyLogo from '../assets/Simply_Logo.png';
 import '../styles/SideNav.css';
@@ -31,6 +32,7 @@ const viewToRoute = {
   workspaces: '/workspaces',
   users: '/users',
   admin: '/admin',
+  consumption: '/consumption',
   settings: '/settings',
   models: '/models',
 };
@@ -115,6 +117,7 @@ const SideNav = ({ onSignIn }) => {
 
     if (['owner', 'admin'].includes(currentRole)) {
       navItems.push({ id: 'users', icon: FiUsers, label: 'Users' });
+      navItems.push({ id: 'consumption', icon: FiBarChart2, label: 'Consumption' });
     }
 
     if (currentRole === 'owner') {
@@ -180,7 +183,7 @@ const SideNav = ({ onSignIn }) => {
           {!isCollapsed && (
             <div className="logo-text-container">
               <span className="logo-text">Simply Analytics</span>
-              <span className="logo-subtitle">Your Snowflake BI Platform</span>
+              <span className="logo-subtitle">Unified Semantic Portal</span>
             </div>
           )}
         </div>

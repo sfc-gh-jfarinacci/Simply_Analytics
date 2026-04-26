@@ -7,7 +7,6 @@
   "scripts": {
     "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 nodemon src/index.js",
     "start": "node src/index.js",
-    "migrate": "node src/db/migrate.js",
     "migrate:postgres": "node src/db/migrate-postgres.js",
     "rotate-key": "node src/scripts/rotate-encryption-key.js",
     "docker:build": "docker build -t simply-analytics-server .",
@@ -19,19 +18,25 @@
   "dependencies": {
     "@node-saml/node-saml": "^5.1.0",
     "@simplewebauthn/server": "^10.0.0",
+    "archiver": "^5.3.2",
     "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "ioredis": "^5.3.2",
     "js-yaml": "^4.1.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
     "otplib": "^12.0.1",
+    "parquetjs-lite": "^0.8.7",
     "pg": "^8.11.3",
     "qrcode": "^1.5.3",
     "snowflake-sdk": "^1.9.3",
+    "tar": "^7.5.13",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

@@ -14,7 +14,7 @@ import {
   FiCheckCircle,
 } from 'react-icons/fi';
 import { useAppStore } from '../../store/appStore';
-import { dashboardAiApi } from '../../api/apiClient';
+import { streamDashboardChat } from '../../api/apiClient';
 import '../../styles/AiChatPanel.css';
 
 function buildSuggestions(metadata, focusedWidget) {
@@ -73,6 +73,79 @@ function formatToolResult(step) {
   }
 }
 
+function groupStepsByRound(steps) {
+  const rounds = [];
+  let current = null;
+  for (const step of steps) {
+    const r = step.round ?? 0;
+    if (!current || current.round !== r) {
+      current = { round: r, steps: [] };
+      rounds.push(current);
+    }
+    current.steps.push(step);
+  }
+  return rounds;
+}
+
+function roundLabel(steps) {
+  const names = [...new Set(steps.map(s => formatToolName(s.tool)))];
+  return names.join(', ');
+}
+
+function ToolStepRounds({ steps, isStreaming }) {
+  const [expanded, setExpanded] = React.useState(null);
+  const rounds = groupStepsByRound(steps);
+
+  return (
+    <div className="ai-chat-tool-rounds">
+      {rounds.map((group) => {
+        const allDone = group.steps.every(s => s.result);
+        const hasError = group.steps.some(s => s.result?.error);
+        const isExpanded = expanded === group.round;
+        const isActive = !allDone && isStreaming;
+
+        return (
+          <div key={group.round} className={`ai-chat-tool-round${isActive ? ' active' : ''}`}>
+            <button
+              className="ai-chat-tool-round-header"
+              onClick={() => setExpanded(isExpanded ? null : group.round)}
+            >
+              <span className="tool-round-icon">
+                {hasError
+                  ? <FiAlertCircle className="tool-step-error" />
+                  : allDone
+                    ? <FiCheckCircle className="tool-step-success" />
+                    : <FiLoader className="ai-chat-spinner" />}
+              </span>
+              <span className="tool-round-label">
+                {isActive
+                  ? group.steps[group.steps.length - 1].thinking || 'Analyzing...'
+                  : `${roundLabel(group.steps)} (${group.steps.length})`}
+              </span>
+              <FiSearch className={`tool-round-expand ${isExpanded ? 'expanded' : ''}`} />
+            </button>
+            {isExpanded && (
+              <div className="ai-chat-tool-round-details">
+                {group.steps.map((step, idx) => (
+                  <div key={idx} className="ai-chat-tool-step-compact">
+                    <span className="tool-step-name-compact">{formatToolName(step.tool)}</span>
+                    {step.result && !step.result.error && (
+                      <span className="tool-step-result-compact">{formatToolResult(step)}</span>
+                    )}
+                    {step.result?.error && (
+                      <span className="tool-step-result-compact tool-step-error-text">{step.result.error}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
   const {
     currentDashboard,
@@ -80,6 +153,7 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
     semanticViewMetadataCache,
     updateDashboard,
     addWidget,
+    activeWorkspace,
   } = useAppStore();
 
   const [messages, setMessages] = useState([]);
@@ -141,8 +215,6 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
       tabs: currentDashboard.tabs,
       filters: currentDashboard.filters,
       semanticViewsReferenced: currentDashboard.semanticViewsReferenced,
-      cortexAgentsEnabled: currentDashboard.cortexAgentsEnabled,
-      cortexAgents: currentDashboard.cortexAgents,
       customColorSchemes: currentDashboard.customColorSchemes,
     };
   }, [currentDashboard]);
@@ -244,44 +316,100 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
     setInput('');
     setIsLoading(true);
 
+    const assistantId = Date.now() + 1;
+    const liveToolSteps = [];
+    let statusText = 'Thinking...';
+
+    setMessages(prev => [...prev, {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+      statusText,
+      toolSteps: [],
+    }]);
+
     try {
       const chatMessages = [...messages, userMsg]
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({ role: m.role, content: m.content }));
 
-      const result = await dashboardAiApi.chat({
-        messages: chatMessages,
-        currentYaml: getCurrentYaml(),
-        focusedWidgetId: focusedWidgetId || undefined,
-        semanticViewMetadata: viewMetadata,
-        connectionId: currentDashboard?.connection_id,
-        warehouse: currentDashboard?.warehouse,
-        role: currentDashboard?.role,
-      });
+      let finalResult = null;
 
-      const assistantMsg = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: result.message || 'Done.',
-        action: result.action,
-        generationTime: result.generationTime,
-        toolSteps: result.toolSteps || [],
-      };
-      setMessages(prev => [...prev, assistantMsg]);
+      await streamDashboardChat(
+        {
+          messages: chatMessages,
+          currentYaml: getCurrentYaml(),
+          focusedWidgetId: focusedWidgetId || undefined,
+          semanticViewMetadata: viewMetadata,
+          connectionId: currentDashboard?.connection_id,
+          warehouse: currentDashboard?.warehouse,
+          role: currentDashboard?.role,
+          workspaceId: activeWorkspace?.id,
+        },
+        (event, data) => {
+          switch (event) {
+            case 'response.status':
+              statusText = data.message;
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, statusText } : m
+              ));
+              break;
+            case 'response.tool_step':
+              liveToolSteps.push({ tool: data.tool, thinking: data.thinking, round: data.round ?? 0 });
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, toolSteps: [...liveToolSteps], statusText: data.thinking || statusText } : m
+              ));
+              break;
+            case 'response.text.delta':
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, content: (m.content || '') + data.text } : m
+              ));
+              break;
+            case 'response.result':
+              finalResult = data;
+              break;
+            case 'error':
+              throw new Error(data.error || 'AI chat failed');
+          }
+        },
+      );
 
-      if (result.action && result.action !== 'none') {
-        applyAction(result);
+      if (finalResult) {
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId
+            ? {
+              ...m,
+              content: finalResult.message || m.content || 'Done.',
+              action: finalResult.action,
+              generationTime: finalResult.generationTime,
+              toolSteps: finalResult.toolSteps || liveToolSteps,
+              isStreaming: false,
+              statusText: undefined,
+            }
+            : m
+        ));
+        if (finalResult.action && finalResult.action !== 'none') {
+          applyAction(finalResult);
+        }
+      } else {
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId ? { ...m, isStreaming: false, statusText: undefined } : m
+        ));
       }
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        role: 'error',
-        content: err.message || 'Something went wrong',
-      }]);
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== assistantId || (m.content && m.content.trim()));
+        return [...filtered.filter(m => m.id !== assistantId), {
+          id: assistantId,
+          role: 'error',
+          content: err.message || 'Something went wrong',
+        }];
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, getCurrentYaml, focusedWidgetId, viewMetadata, currentDashboard, applyAction]);
+  }, [input, isLoading, messages, getCurrentYaml, focusedWidgetId, viewMetadata, currentDashboard, applyAction, activeWorkspace]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -354,32 +482,16 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
             ) : (
               <>
                 {msg.toolSteps?.length > 0 && (
-                  <div className="ai-chat-tool-steps">
-                    {msg.toolSteps.map((step, idx) => (
-                      <div key={idx} className="ai-chat-tool-step">
-                        <div className="ai-chat-tool-step-header">
-                          {step.result?.error ? <FiAlertCircle className="tool-step-icon tool-step-error" /> : <FiCheckCircle className="tool-step-icon tool-step-success" />}
-                          <span className="tool-step-name">{formatToolName(step.tool)}</span>
-                          {step.result?.executionTime && (
-                            <span className="tool-step-time">{step.result.executionTime}ms</span>
-                          )}
-                        </div>
-                        {step.thinking && (
-                          <div className="ai-chat-tool-step-thinking">{step.thinking}</div>
-                        )}
-                        {step.result && !step.result.error && (
-                          <div className="ai-chat-tool-step-result">
-                            {formatToolResult(step)}
-                          </div>
-                        )}
-                        {step.result?.error && (
-                          <div className="ai-chat-tool-step-result tool-step-error-text">{step.result.error}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <ToolStepRounds steps={msg.toolSteps} isStreaming={msg.isStreaming} />
                 )}
-                <div className="ai-chat-msg-content">{msg.content}</div>
+                {msg.content ? (
+                  <div className="ai-chat-msg-content">{msg.content}</div>
+                ) : msg.isStreaming ? (
+                  <div className="ai-chat-msg-loading">
+                    <FiLoader className="ai-chat-spinner" />
+                    <span>{msg.statusText || 'Thinking...'}</span>
+                  </div>
+                ) : null}
                 {msg.action && msg.action !== 'none' && (
                   <div className="ai-chat-msg-action">
                     Applied: {msg.action.replace(/_/g, ' ')}
@@ -391,7 +503,7 @@ const AiChatPanel = ({ isOpen, onClose, focusedWidgetId, onFocusWidget }) => {
           </div>
         ))}
 
-        {isLoading && (
+        {isLoading && !messages.some(m => m.isStreaming) && (
           <div className="ai-chat-msg ai-chat-msg-assistant">
             <div className="ai-chat-msg-loading">
               <FiLoader className="ai-chat-spinner" />

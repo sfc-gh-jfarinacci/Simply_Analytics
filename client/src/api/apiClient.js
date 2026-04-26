@@ -15,11 +15,12 @@ export { userApi } from './modules/userApi.js';
 export { sfConnectionApi } from './modules/sfConnectionApi.js';
 export { groupApi } from './modules/groupApi.js';
 export { folderApi } from './modules/folderApi.js';
-export { dashboardAiApi } from './modules/dashboardAiApi.js';
+export { dashboardAiApi, streamDashboardChat } from './modules/dashboardAiApi.js';
 export { askApi, streamAskChat } from './modules/askApi.js';
 export { workspaceApi } from './modules/workspaceApi.js';
 export { setupApi } from './modules/setupApi.js';
 export { adminApi } from './modules/adminApi.js';
+export { consumptionApi } from './modules/consumptionApi.js';
 
 export {
   startSessionMonitoring,

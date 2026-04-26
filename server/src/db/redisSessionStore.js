@@ -247,8 +247,14 @@ export async function hasSession(sessionId) {
 export async function getAllSessionIds() {
   if (useRedis && redis) {
     try {
-      const keys = await redis.keys(`${REDIS_PREFIX}*`);
-      return keys.map(key => key.replace(REDIS_PREFIX, ''));
+      const ids = [];
+      let cursor = '0';
+      do {
+        const [next, keys] = await redis.scan(cursor, 'MATCH', `${REDIS_PREFIX}*`, 'COUNT', 200);
+        cursor = next;
+        for (const key of keys) ids.push(key.replace(REDIS_PREFIX, ''));
+      } while (cursor !== '0');
+      return ids;
     } catch (error) {
       console.error('Redis getAllSessionIds error:', error.message);
     }
@@ -263,8 +269,14 @@ export async function getAllSessionIds() {
 export async function getSessionCount() {
   if (useRedis && redis) {
     try {
-      const keys = await redis.keys(`${REDIS_PREFIX}*`);
-      return keys.length;
+      let count = 0;
+      let cursor = '0';
+      do {
+        const [next, keys] = await redis.scan(cursor, 'MATCH', `${REDIS_PREFIX}*`, 'COUNT', 200);
+        cursor = next;
+        count += keys.length;
+      } while (cursor !== '0');
+      return count;
     } catch (error) {
       console.error('Redis getSessionCount error:', error.message);
     }
@@ -317,6 +329,14 @@ export function isRedisActive() {
 }
 
 /**
+ * Get the underlying Redis client (for sharing with cache/rate-limit layers).
+ * Returns null if Redis is not active.
+ */
+export function getRedisClient() {
+  return useRedis && redis ? redis : null;
+}
+
+/**
  * Gracefully close Redis connection
  */
 export async function closeRedis() {
@@ -344,5 +364,6 @@ export default {
   cleanupExpiredSessions,
   getMemorySession,
   isRedisActive,
+  getRedisClient,
   closeRedis,
 };

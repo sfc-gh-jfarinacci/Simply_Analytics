@@ -15,7 +15,7 @@ import twoFactorService from '../services/twoFactorService.js';
 
 // Verbose logging toggle
 const VERBOSE = process.env.VERBOSE_LOGS === 'true';
-const log = (...args) => VERBOSE && log(...args);
+const log = (...args) => VERBOSE && console.log('[auth]', ...args);
 import {
   authenticateWithKeyPair,
   authenticateWithPAT,
@@ -27,9 +27,8 @@ import {
 } from '../middleware/auth.js';
 import { closeDashboardConnection } from '../db/dashboardSessionManager.js';
 import configStore from '../config/configStore.js';
-
-function getJwtSecret() { return configStore.get('JWT_SECRET') || process.env.JWT_SECRET || 'simply-analytics-secret-change-in-production'; }
-function getJwtExpiry() { return configStore.get('JWT_EXPIRY') || process.env.JWT_EXPIRY || '8h'; }
+import { trackEvent } from '../services/eventTracker.js';
+import { getJwtSecret, getJwtExpiry } from '../middleware/auth.js';
 
 // Server instance ID - generated on each startup
 // JWTs issued before a server restart will have a different instanceId and be rejected
@@ -123,7 +122,7 @@ authRoutes.post('/login', async (req, res) => {
     const user = await userService.validateCredentials(username, password);
     
     if (!user) {
-      // Track failed login attempt if user exists
+      trackEvent('auth.login_fail', { userId: userByUsername?.id || null, metadata: { username }, ip: req.ip });
       if (userByUsername) {
         const failResult = await userService.recordFailedLogin(userByUsername.id);
         if (failResult.locked) {
@@ -263,6 +262,8 @@ authRoutes.post('/login', async (req, res) => {
     );
 
     log(`App login successful: ${username} with role ${user.role}, session ${sessionId.substring(0, 8)}...`);
+
+    trackEvent('auth.login_success', { userId: user.id, metadata: { role: user.role }, ip: req.ip });
 
     res.json({
       success: true,

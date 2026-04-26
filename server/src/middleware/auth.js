@@ -24,10 +24,17 @@ const VERBOSE = process.env.VERBOSE_LOGS === 'true';
 const log = (...args) => VERBOSE && console.log(...args);
 
 // JWT configuration — read dynamically so hot-reloaded config takes effect
-function getJwtSecret() {
-  return configStore.get('JWT_SECRET') || 'fallback-dev-secret';
+export function getJwtSecret() {
+  const secret = configStore.get('JWT_SECRET');
+  if (!secret) {
+    if (configStore.isConfigured()) {
+      throw new Error('JWT_SECRET is not set — refusing to operate without a signing key');
+    }
+    return 'setup-only-temporary-secret';
+  }
+  return secret;
 }
-function getJwtExpiry() {
+export function getJwtExpiry() {
   return configStore.get('JWT_EXPIRY') || '8h';
 }
 function getSessionTimeout() {
@@ -45,7 +52,8 @@ function getSnowflakeAccount() { return configStore.get('SNOWFLAKE_ACCOUNT'); }
 // For true horizontal scaling, use sticky sessions (load balancer affinity)
 const sessions = new Map();
 
-// Pending OAuth states (for CSRF protection)
+// Pending OAuth states (for CSRF protection) — capped to prevent memory exhaustion
+const MAX_PENDING_OAUTH_STATES = 10_000;
 const pendingOAuthStates = new Map();
 
 
@@ -246,14 +254,17 @@ export function getOAuthAuthorizationUrl(account) {
   }
   
   const state = crypto.randomUUID();
-  
-  // Store state for CSRF protection (expires in 10 minutes)
+
+  if (pendingOAuthStates.size >= MAX_PENDING_OAUTH_STATES) {
+    const oldest = pendingOAuthStates.keys().next().value;
+    pendingOAuthStates.delete(oldest);
+  }
+
   pendingOAuthStates.set(state, {
     account,
     createdAt: Date.now(),
   });
-  
-  // Clean up old states after 10 minutes
+
   setTimeout(() => pendingOAuthStates.delete(state), 10 * 60 * 1000);
   
   const redirectUri = getOAuthRedirectUri();
@@ -576,7 +587,7 @@ export async function getAvailableRoles(sessionId) {
     // Get roles granted to the current user
     const result = await executeQuery(
       session.connection, 
-      `SHOW GRANTS TO USER ${session.userContext.username}`
+      `SHOW GRANTS TO USER "${session.userContext.username.replace(/"/g, '')}"`
     );
     
     // Filter for role grants and extract role names
@@ -631,7 +642,7 @@ export async function switchRole(sessionId, newRole) {
   if (!session) throw new Error('Session not found');
 
   try {
-    await executeQuery(session.connection, `USE ROLE ${newRole}`);
+    await executeQuery(session.connection, `USE ROLE "${newRole.replace(/"/g, '')}"`);
     session.userContext.role = newRole;
     return session.userContext.toJSON();
   } catch (error) {

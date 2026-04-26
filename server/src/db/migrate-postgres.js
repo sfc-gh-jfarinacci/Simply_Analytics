@@ -499,6 +499,35 @@ async function runMigration() {
       console.log('   ⚠️  Could not add workspace_id column:', migrateErr.message);
     }
 
+    // workspace_mcp_servers table
+    try {
+      const mcpTableCheck = await pool.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name = 'workspace_mcp_servers'
+      `);
+      if (mcpTableCheck.rows.length === 0) {
+        await pool.query(`
+          CREATE TABLE workspace_mcp_servers (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            workspace_connection_id UUID NOT NULL REFERENCES workspace_connections(id) ON DELETE CASCADE,
+            mcp_server_fqn VARCHAR(1000) NOT NULL,
+            label VARCHAR(255),
+            sample_questions JSONB DEFAULT '[]',
+            added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_ws_conn_mcp_server UNIQUE (workspace_id, workspace_connection_id, mcp_server_fqn)
+          )
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_ws_mcp_servers_ws ON workspace_mcp_servers(workspace_id)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_ws_mcp_servers_conn ON workspace_mcp_servers(workspace_connection_id)`);
+        console.log("   ✅ Created 'workspace_mcp_servers' table");
+      } else {
+        console.log("   ✓ 'workspace_mcp_servers' table already exists");
+      }
+    } catch (migrateErr) {
+      console.log('   ⚠️  Could not create workspace_mcp_servers table:', migrateErr.message);
+    }
+
     for (const [tbl, col] of [['ask_workspace_views', 'sample_questions'], ['ask_workspace_agents', 'sample_questions']]) {
       try {
         const check = await pool.query(`
@@ -514,6 +543,175 @@ async function runMigration() {
       } catch (migrateErr) {
         console.log(`   ⚠️  Could not add ${col} to ${tbl}:`, migrateErr.message);
       }
+    }
+
+    // workspace_ai_config table
+    console.log('\n🤖 Setting up workspace AI config...');
+    try {
+      const aiConfigCheck = await pool.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name = 'workspace_ai_config'
+      `);
+      if (aiConfigCheck.rows.length === 0) {
+        await pool.query(`
+          CREATE TABLE workspace_ai_config (
+            workspace_id UUID PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+            provider VARCHAR(20) NOT NULL DEFAULT 'cortex',
+            api_key_encrypted TEXT,
+            default_model VARCHAR(100),
+            endpoint_url TEXT,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pool.query(`
+          CREATE TRIGGER update_workspace_ai_config_updated_at
+            BEFORE UPDATE ON workspace_ai_config
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+        `);
+        console.log("   ✅ Created 'workspace_ai_config' table");
+      } else {
+        // Add endpoint_url column if missing (upgrade from earlier version)
+        try {
+          const endpointCol = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'workspace_ai_config' AND column_name = 'endpoint_url'
+          `);
+          if (endpointCol.rows.length === 0) {
+            await pool.query(`ALTER TABLE workspace_ai_config ADD COLUMN endpoint_url TEXT`);
+            console.log("   ✅ Added 'endpoint_url' column to workspace_ai_config");
+          }
+        } catch { /* ignore */ }
+        console.log("   ✓ 'workspace_ai_config' table already exists");
+      }
+    } catch (migrateErr) {
+      console.log('   ⚠️  Could not create workspace_ai_config table:', migrateErr.message);
+    }
+
+    // workspace_models table
+    try {
+      const modelsCheck = await pool.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name = 'workspace_models'
+      `);
+      if (modelsCheck.rows.length === 0) {
+        await pool.query(`
+          CREATE TABLE workspace_models (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            model_id VARCHAR(255) NOT NULL,
+            display_name VARCHAR(255) NOT NULL,
+            provider VARCHAR(20) NOT NULL,
+            description TEXT,
+            context_window INTEGER,
+            capabilities JSONB DEFAULT '[]',
+            is_default BOOLEAN DEFAULT false,
+            is_enabled BOOLEAN DEFAULT true,
+            endpoint_url TEXT,
+            api_key_encrypted TEXT,
+            added_by UUID REFERENCES users(id),
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_ws_model UNIQUE (workspace_id, provider, model_id)
+          )
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_ws_models_ws ON workspace_models(workspace_id)`);
+        await pool.query(`
+          CREATE TRIGGER update_workspace_models_updated_at
+            BEFORE UPDATE ON workspace_models
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+        `);
+        console.log("   ✅ Created 'workspace_models' table");
+      } else {
+        console.log("   ✓ 'workspace_models' table already exists");
+      }
+    } catch (migrateErr) {
+      console.log('   ⚠️  Could not create workspace_models table:', migrateErr.message);
+    }
+
+    // platform_models catalog table
+    try {
+      const pmCheck = await pool.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name = 'platform_models'
+      `);
+      if (pmCheck.rows.length === 0) {
+        await pool.query(`
+          CREATE TABLE platform_models (
+            id VARCHAR(255) PRIMARY KEY,
+            display_name VARCHAR(255) NOT NULL,
+            vendor VARCHAR(100) NOT NULL,
+            category VARCHAR(50) NOT NULL DEFAULT 'chat',
+            context_window INTEGER,
+            is_enabled BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        console.log("   ✅ Created 'platform_models' table");
+
+        // Seed built-in models
+        const builtIns = [
+          ['gpt-4o', 'GPT-4o', 'openai', 'chat', 128000],
+          ['gpt-4o-mini', 'GPT-4o Mini', 'openai', 'chat', 128000],
+          ['claude-sonnet-4-6', 'Claude Sonnet 4', 'anthropic', 'chat', 200000],
+          ['claude-haiku-3', 'Claude Haiku 3', 'anthropic', 'chat', 200000],
+          ['meta-llama/Llama-4-Scout-17B-16E-Instruct', 'Llama 4 Scout', 'meta', 'chat', 1048576],
+          ['deepseek-ai/DeepSeek-V3', 'DeepSeek V3', 'deepseek', 'chat', 128000],
+          ['google/gemma-3-27b-it', 'Gemma 3 27B', 'google', 'chat', 128000],
+        ];
+        for (const [id, name, vendor, cat, ctx] of builtIns) {
+          await pool.query(
+            `INSERT INTO platform_models (id, display_name, vendor, category, context_window) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+            [id, name, vendor, cat, ctx],
+          );
+        }
+        console.log("   ✅ Seeded built-in platform models");
+      } else {
+        console.log("   ✓ 'platform_models' table already exists");
+      }
+    } catch (migrateErr) {
+      console.log('   ⚠️  Could not create platform_models table:', migrateErr.message);
+    }
+
+    // platform_model_endpoints table (cross-cloud/cross-region routing)
+    try {
+      const pmeCheck = await pool.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name = 'platform_model_endpoints'
+      `);
+      if (pmeCheck.rows.length === 0) {
+        await pool.query(`
+          CREATE TABLE platform_model_endpoints (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            model_id VARCHAR(255) NOT NULL REFERENCES platform_models(id) ON DELETE CASCADE,
+            provider VARCHAR(20) NOT NULL,
+            cloud VARCHAR(10) NOT NULL,
+            region VARCHAR(100) NOT NULL,
+            endpoint_config JSONB DEFAULT '{}',
+            priority INTEGER DEFAULT 100,
+            is_active BOOLEAN DEFAULT true,
+            health_status VARCHAR(20) DEFAULT 'healthy',
+            last_health_check TIMESTAMPTZ,
+            avg_latency_ms INTEGER,
+            cost_per_1k_tokens NUMERIC(10, 6),
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_model_cloud_region UNIQUE (model_id, cloud, region)
+          )
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_platform_endpoints_model ON platform_model_endpoints(model_id)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_platform_endpoints_cloud ON platform_model_endpoints(cloud, region)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_platform_endpoints_active ON platform_model_endpoints(is_active, health_status)`);
+        await pool.query(`
+          CREATE TRIGGER update_platform_model_endpoints_updated_at
+            BEFORE UPDATE ON platform_model_endpoints
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+        `);
+        console.log("   ✅ Created 'platform_model_endpoints' table");
+      } else {
+        console.log("   ✓ 'platform_model_endpoints' table already exists");
+      }
+    } catch (migrateErr) {
+      console.log('   ⚠️  Could not create platform_model_endpoints table:', migrateErr.message);
     }
 
     // Create or update admin user with properly hashed password

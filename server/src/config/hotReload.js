@@ -46,13 +46,8 @@ export function initHotReload() {
 
 async function reloadDatabase(changedKeys) {
   const pgKeys = ['POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD'];
-  const sfKeys = ['SF_SERVICE_ACCOUNT', 'SF_SERVICE_USER', 'SF_SERVICE_AUTH_TYPE', 'SF_SERVICE_PASSWORD',
-    'SF_SERVICE_PRIVATE_KEY_PATH', 'SF_SERVICE_PRIVATE_KEY_PASS', 'SF_SERVICE_TOKEN',
-    'SF_SERVICE_WAREHOUSE', 'SF_SERVICE_DATABASE', 'SF_SERVICE_SCHEMA', 'SF_SERVICE_ROLE'];
 
-  const backend = configStore.get('METADATA_BACKEND') || 'postgres';
-
-  if (backend === 'postgres' && changedKeys.some(k => pgKeys.includes(k))) {
+  if (changedKeys.some(k => pgKeys.includes(k))) {
     console.log('[hot-reload] Reconnecting PostgreSQL pool...');
     try {
       const pgMod = await import('../db/postgresBackend.js');
@@ -64,18 +59,6 @@ async function reloadDatabase(changedKeys) {
       }
     } catch (err) {
       console.error('[hot-reload] PostgreSQL reconnect failed:', err.message);
-    }
-  }
-
-  if (backend === 'snowflake' && changedKeys.some(k => sfKeys.includes(k))) {
-    console.log('[hot-reload] Reconnecting Snowflake service connection...');
-    try {
-      const sfMod = await import('../db/snowflakeBackend.js');
-      await sfMod.closeConnection();
-      await sfMod.initServiceConnection();
-      console.log('[hot-reload] Snowflake service connection re-established');
-    } catch (err) {
-      console.error('[hot-reload] Snowflake reconnect failed:', err.message);
     }
   }
 }

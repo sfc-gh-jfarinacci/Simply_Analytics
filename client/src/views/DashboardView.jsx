@@ -11,8 +11,8 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useToast } from '../components/Toast';
 import { FiDatabase } from 'react-icons/fi';
 import { sfConnectionApi } from '../api/apiClient';
-import CortexAgentChat from '../components/CortexAgentChat';
 import AiChatPanel from '../components/ai/AiChatPanel';
+import FloatingAskChat from '../components/FloatingAskChat';
 import '../styles/DashboardView.css';
 
 import { useGridStack } from '../components/dashboard-view/hooks/useGridStack';
@@ -546,23 +546,14 @@ const DashboardView = () => {
 
       {showShortcuts && <KeyboardShortcutsPanel onClose={() => setShowShortcuts(false)} />}
 
-      {currentDashboard?.cortexAgentsEnabled && currentDashboard?.cortexAgents?.length > 0 && (
-        <CortexAgentChat
-          connectionId={currentDashboard.connection_id}
-          cortexAgents={currentDashboard.cortexAgents}
-          role={currentDashboard.role}
-          tempFilters={tempFilters}
-          onApplyTempFilter={(filter) => setTempFilters(prev => [...prev.filter(f => f.field !== filter.field), filter])}
-          onClearTempFilters={() => setTempFilters([])}
-        />
-      )}
-
       <AiChatPanel
         isOpen={showAiChat}
         onClose={() => setShowAiChat(false)}
         focusedWidgetId={aiFocusedWidgetId}
         onFocusWidget={setAiFocusedWidgetId}
       />
+
+      {currentDashboard && <FloatingAskChat />}
     </div>
   );
 };

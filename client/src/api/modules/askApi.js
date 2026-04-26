@@ -56,53 +56,6 @@ export const askApi = {
   },
 };
 
-export async function streamAgentChat(params, onEvent, signal) {
-  const token = getAuthToken();
-  const res = await fetch(`${API_BASE}/ask/agent-message`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-    },
-    body: JSON.stringify(params),
-    signal,
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
-    throw new Error(err.error || 'Agent chat request failed');
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    let currentEvent = 'message';
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim();
-      } else if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          onEvent(currentEvent, data);
-        } catch {
-          onEvent(currentEvent, line.slice(6));
-        }
-      } else if (line === '') {
-        currentEvent = 'message';
-      }
-    }
-  }
-}
-
 export async function streamAskChat(params, onEvent, signal) {
   const token = getAuthToken();
   const res = await fetch(`${API_BASE}/ask/message`, {

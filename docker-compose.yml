@@ -1,16 +1,71 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: simply-postgres
+    environment:
+      POSTGRES_USER: simply
+      POSTGRES_PASSWORD: simply_default_pw
+      POSTGRES_DB: simply_analytics
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - wal-archive:/wal-archive
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "archive_mode=on"
+      - "-c"
+      - "archive_command=cp %p /wal-archive/%f"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simply -d simply_analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: simply-redis
+    command: ["redis-server", "--requirepass", "simply_redis_pw", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "simply_redis_pw", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
   api:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: simply-api
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       - NODE_ENV=production
       - PORT=3001
+      - NODE_OPTIONS=--max-old-space-size=3072
+      - REDIS_URL=redis://:simply_redis_pw@redis:6379
+      - BUNDLED_PG_HOST=postgres
+      - BUNDLED_PG_PORT=5432
+      - BUNDLED_PG_DB=simply_analytics
+      - BUNDLED_PG_USER=simply
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 1g
     volumes:
       - config-data:/app/data
+      - backups-data:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/api/v1/health"]
       interval: 30s
@@ -32,4 +87,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres-data:
+  wal-archive:
+  redis-data:
   config-data:
+  backups-data:

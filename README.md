@@ -1,7 +1,7 @@
 <h1 align="center">Simply Analytics</h1>
 
 <p align="center">
-  An open-source analytics platform for Snowflake with drag-and-drop dashboards, 20+ visualization types, AI-powered natural language analytics, and enterprise security — all deployable through a guided web-based setup wizard.
+  An open-source analytics platform for Snowflake with drag-and-drop dashboards, 20+ visualization types, AI-powered natural language analytics, published query endpoints, a consumption analytics dashboard, and enterprise security — all deployable through a guided web-based setup wizard.
 </p>
 
 <p align="center">
@@ -35,26 +35,47 @@
 
 ### AskAI — Natural Language Analytics
 - **Conversational analytics** — ask questions in plain language and get instant charts, tables, and dashboards
-- **Two modes**: Semantic View analysis (structured SQL generation) and Cortex Agent proxying (agentic RAG)
-- **Workspaces** — scoped environments with configured Snowflake connections, semantic views, and Cortex agents
+- **Semantic View analysis** — structured SQL generation via the Cortex Analyst REST API
+- **Workspaces** — scoped environments with configured Snowflake connections and semantic views
 - **Group-based access control** on workspaces
 - **Persistent conversations** with encrypted message storage (AES-256-GCM)
 - **Rich artifacts** — interactive charts, data tables, and multi-widget dashboard layouts generated from natural language
 - **Shareable dashboards** — public share links for AI-generated dashboard artifacts
 - **Export** — conversation PDF export, chart PNG export, data CSV download
-- **Sample questions** — configurable per semantic view or agent for guided exploration
+- **Sample questions** — configurable per semantic view for guided exploration
 
 ### Dashboard AI Copilot
-- **In-editor AI assistant** — contextual side panel powered by Snowflake Cortex COMPLETE
+- **In-editor AI assistant** — contextual side panel with multi-provider LLM support (Cortex REST, OpenAI, Anthropic, Bedrock, Vertex, Azure)
 - **Widget-aware** — focus on a specific widget for targeted modifications
 - **Suggestion chips** from semantic view dimensions, measures, and facts
 - **Undo stack** with revert capabilities for AI-applied changes
 
+### Published Query Endpoints
+- **Query-as-API** — publish semantic view queries as REST endpoints with parameterized inputs
+- **Workspace-scoped API keys** — bearer token authentication for external consumers
+- **Public and private** sharing with unique share tokens
+
+### Consumption Dashboard
+- **Admin-only analytics** — visual dashboard tracking platform usage (owner and admin roles)
+- **KPI cards** — total requests, active users, login success rate, dashboard views
+- **Time-series charts** — sign-in activity, request volume by type (AI / query / dashboard), active users over time
+- **Popular dashboards** — leaderboard ranked by views
+- **Workspace filtering** — view metrics for all workspaces or drill into a specific one
+- **Date range selector** — 7-day, 30-day, and 90-day windows
+- **Event tracking** — lightweight, fire-and-forget event logging across login, dashboard, query, and AI routes
+
 ### Snowflake Integration
 - Direct integration with **Snowflake Semantic Views** for governed data access
-- **Cortex AI** — natural language analytics via Cortex COMPLETE and Cortex Agents
+- **Cortex Analyst REST API** — natural language to SQL via semantic views
+- **Cortex REST API** — chat completions for AI copilot and dashboard generation
 - Multiple authentication methods: PAT, key pair
 - Connection pooling, role/warehouse switching
+
+### AI Model Management
+- **Multi-provider LLM abstraction** — Cortex REST, OpenAI, Anthropic, AWS Bedrock, GCP Vertex AI, Azure OpenAI
+- **Platform model catalog** — define which models the platform supports with multi-cloud endpoint routing
+- **Workspace AI config** — per-workspace provider and model selection with encrypted API keys
+- **Health monitoring** — endpoint health checks, latency tracking, and priority-based failover
 
 ### Enterprise Security
 - **Multi-factor authentication** — TOTP (Google Authenticator, Authy) and FIDO2 Passkeys (WebAuthn)
@@ -63,7 +84,7 @@
 - **RBAC** — Owner, Admin, Editor, Viewer roles with group-based dashboard and workspace access
 - AES-256-GCM credential encryption at rest with key rotation
 - Rate limiting, account lockout, audit logging, Helmet security headers
-- Session timeout with inactivity tracking
+- Session timeout with inactivity tracking and single-session enforcement
 
 ### Web-Based Setup & Administration
 - **Guided setup wizard** — configure database, security keys, run migrations, and create the owner account entirely through the browser
@@ -76,6 +97,7 @@
 ### Metadata Backend
 - **PostgreSQL** (recommended) or **Snowflake** as the metadata store
 - Full migration scripts for both backends with SSE-streamed progress logs
+- **Auto-patching** — new tables and columns applied automatically on startup
 
 ---
 
@@ -224,26 +246,28 @@ SCIM_BEARER_TOKEN=your-scim-token
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    React 18 + Vite                          │
-│  Dashboard Builder · Widget Editor · AskAI · Admin Console │
-│  D3.js · ECharts · AG Grid · TanStack · GridStack · @dnd-kit│
-└────────────────────────────┬────────────────────────────────┘
-                             │ REST + JWT
-┌────────────────────────────┴────────────────────────────────┐
-│                   Express API Server                        │
-│  Auth · SAML SSO · SCIM · MFA · Dashboard · Ask · Admin    │
-│  Workspaces · Encrypted Config Store · Helmet · Rate Limit  │
-└────────────┬────────────────────────────────┬───────────────┘
-             │                                │
-    PostgreSQL                         Snowflake SDK
-             │                                │
-┌────────────┴────────────────┐  ┌────────────┴──────────────┐
-│   Metadata + Config         │  │   Snowflake Data Cloud    │
-│   Users · Dashboards · Ask  │  │   Semantic Views · Cortex │
-│   Workspaces · Groups       │  │   Queries · AI Insights   │
-│   Encrypted Credentials     │  │   Cortex Agents           │
-└─────────────────────────────┘  └───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                       React 18 + Vite                            │
+│  Dashboard Builder · Widget Editor · AskAI · Consumption · Admin │
+│  D3.js · ECharts · AG Grid · TanStack · GridStack · @dnd-kit    │
+└──────────────────────────────┬───────────────────────────────────┘
+                               │ REST + JWT + SSE
+┌──────────────────────────────┴───────────────────────────────────┐
+│                      Express API Server                          │
+│  Auth · SAML SSO · SCIM · MFA · Dashboard · Ask · Consumption   │
+│  Workspaces · Endpoints · Platform Models · Event Tracking       │
+│  Encrypted Config Store · Helmet · Rate Limit                    │
+└──────────────┬─────────────────────────────────┬─────────────────┘
+               │                                 │
+         PostgreSQL                       Snowflake SDK
+               │                                 │
+┌──────────────┴─────────────────┐  ┌────────────┴────────────────┐
+│   Metadata + Config            │  │   Snowflake Data Cloud      │
+│   Users · Dashboards · Ask     │  │   Semantic Views            │
+│   Workspaces · Endpoints       │  │   Cortex Analyst REST API   │
+│   App Events · Audit Log       │  │   Cortex REST API           │
+│   Encrypted Credentials        │  │   Queries · AI Insights     │
+└────────────────────────────────┘  └─────────────────────────────┘
 ```
 
 ### Project Structure
@@ -252,7 +276,7 @@ SCIM_BEARER_TOKEN=your-scim-token
 simply-analytics/
 ├── client/                     # React SPA
 │   ├── src/
-│   │   ├── api/                # API client modules (16 modules)
+│   │   ├── api/                # API client modules (17 modules)
 │   │   ├── components/
 │   │   │   ├── ai/             # Dashboard AI copilot
 │   │   │   ├── ask/            # Simply Ask chat components & renderers
@@ -264,9 +288,9 @@ simply-analytics/
 │   │   │   ├── shared/         # Reusable UI components
 │   │   │   ├── widget-editor/  # Drag-and-drop widget editor
 │   │   │   └── users-management/ # User & group management
-│   │   ├── store/              # Zustand state management (9 slices)
+│   │   ├── store/              # Zustand state management (10 slices)
 │   │   ├── utils/              # Export utilities (PNG, CSV, PDF)
-│   │   └── views/              # Page-level components (8 views)
+│   │   └── views/              # Page-level components (9 views)
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── server/                     # Express API
@@ -274,8 +298,8 @@ simply-analytics/
 │   │   ├── config/             # Encrypted config store & hot reload
 │   │   ├── db/                 # PostgreSQL + Snowflake backends
 │   │   ├── middleware/         # Auth, rate limiting, session management
-│   │   ├── routes/             # API endpoints (16 route files)
-│   │   ├── services/           # Business logic (14 services)
+│   │   ├── routes/             # API endpoints (19 route files)
+│   │   ├── services/           # Business logic (24 services)
 │   │   └── utils/              # Encryption, query builder
 │   └── Dockerfile
 ├── tests/                      # Vitest unit & integration tests
@@ -291,7 +315,7 @@ simply-analytics/
 |-------|-------------|
 | **Frontend** | React 18, Vite, Zustand, D3.js, ECharts, AG Grid, TanStack Table/Virtual, GridStack, @dnd-kit, React Router 7, html-to-image, jsPDF |
 | **Backend** | Express, PostgreSQL, Snowflake SDK |
-| **AI** | Snowflake Cortex COMPLETE, Snowflake Cortex Agents |
+| **AI** | Snowflake Cortex Analyst REST API, Cortex REST API, OpenAI, Anthropic, AWS Bedrock, GCP Vertex AI, Azure OpenAI |
 | **Auth** | JWT, bcrypt, SAML 2.0, SCIM 2.0, TOTP, WebAuthn/FIDO2 |
 | **Security** | AES-256-GCM (credentials + config + messages), Helmet, express-rate-limit |
 | **Testing** | Vitest, Playwright, supertest |
@@ -301,12 +325,12 @@ simply-analytics/
 
 ## User Roles
 
-| Role | Dashboards | AskAI | Connections | Users | Admin |
-|------|-----------|-------|-------------|-------|-------|
-| **Owner** | Full access | Full access + manage workspaces | Manage | Manage all | Full admin |
-| **Admin** | Create & edit | Access via workspace groups | Manage | Manage | — |
-| **Editor** | Create & edit | Access via workspace groups | View | — | — |
-| **Viewer** | View only | Access via workspace groups | — | — | — |
+| Role | Dashboards | AskAI | Connections | Users | Consumption | Admin |
+|------|-----------|-------|-------------|-------|-------------|-------|
+| **Owner** | Full access | Full access + manage workspaces | Manage | Manage all | Full access | Full admin |
+| **Admin** | Create & edit | Access via workspace groups | Manage | Manage | Full access | — |
+| **Editor** | Create & edit | Access via workspace groups | View | — | — | — |
+| **Viewer** | View only | Access via workspace groups | — | — | — | — |
 
 ---
 
@@ -328,12 +352,22 @@ simply-analytics/
 | `GET/POST/PUT/DELETE /api/v1/groups/*` | Group management |
 | `GET/POST/PUT/DELETE /api/v1/folders/*` | Folder management |
 | `GET/POST/PUT/DELETE /api/v1/workspaces/*` | Workspace management |
-| `POST /api/v1/ask/message` | AskAI semantic mode (SSE) |
-| `POST /api/v1/ask/agent-message` | AskAI agent mode (SSE) |
+| `GET/POST/DELETE /api/v1/workspaces/:id/endpoints/*` | Published query endpoints |
+| `GET/POST/DELETE /api/v1/workspaces/:id/api-keys/*` | Workspace API keys |
+| `GET /api/v1/pipe/:token` | Public query endpoint execution |
+| `POST /api/v1/ask/message` | AskAI conversation via Cortex Analyst (SSE) |
 | `GET/POST/DELETE /api/v1/ask/conversations/*` | Conversation management |
 | `POST /api/v1/ask/dashboards` | Save AI-generated dashboard |
 | `GET /api/v1/ask/shared/dashboard/:token` | Public shared dashboard |
+| `POST /api/v1/dashboard-ai/generate` | AI dashboard generation |
+| `POST /api/v1/dashboard-ai/generate-widget` | AI widget generation |
 | `POST /api/v1/dashboard-ai/chat` | Dashboard AI copilot (SSE) |
+| `GET /api/v1/consumption/overview` | Consumption KPI summary |
+| `GET /api/v1/consumption/auth-metrics` | Sign-in success/fail over time |
+| `GET /api/v1/consumption/popular-dashboards` | Dashboard popularity leaderboard |
+| `GET /api/v1/consumption/request-volume` | Requests by type over time |
+| `GET /api/v1/consumption/active-users` | Active user counts over time |
+| `GET/POST /api/v1/platform/*` | Platform model catalog management |
 | `GET/PUT /api/v1/admin/config` | Admin configuration |
 | `POST /api/v1/admin/migrate` | Schema migrations (SSE) |
 | `POST /api/v1/admin/migrate-data` | Data migration (SSE) |

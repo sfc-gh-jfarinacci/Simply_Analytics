@@ -3,17 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import {
   FiDatabase, FiLock, FiKey, FiServer, FiUsers, FiShield,
   FiRefreshCw, FiSave, FiAlertTriangle, FiCheck, FiCopy,
-  FiPlay, FiArrowLeft, FiArrowRight,
-  FiLoader, FiUser, FiGlobe,
+  FiPlay, FiArrowLeft, FiArrowRight, FiDownload, FiUpload,
+  FiLoader, FiUser, FiGlobe, FiHardDrive, FiTrash2,
 } from 'react-icons/fi';
 import { useAppStore } from '../store/appStore';
 import '../styles/AdminPanel.css';
 
 const NORMAL_TABS = [
   { id: 'database', label: 'Database', icon: FiDatabase },
+  { id: 'backups', label: 'Backups & Migration', icon: FiHardDrive },
   { id: 'security', label: 'Security', icon: FiLock },
-  { id: 'sso', label: 'SSO / SAML', icon: FiGlobe },
-  { id: 'scim', label: 'SCIM', icon: FiUsers },
+  { id: 'sso', label: 'SSO & Provisioning', icon: FiGlobe },
   { id: 'system', label: 'System', icon: FiServer },
 ];
 
@@ -42,16 +42,21 @@ export default function AdminPanel() {
     clearAdminError,
     // Setup / provisioning
     setupProgress, fetchSetupProgress,
-    fetchMasterKey, setupMasterKey,
-    testSetupDatabase,
+    detectBundledPg, bundledPg,
+    downloadRecoveryKey, restoreFromBackup,
+    testSetupDatabase, provisionDatabase,
     saveSetupConfig, runSetupMigrations,
     createSetupOwner, completeSetup,
     setupMigrationLogs, setupMigrationResult,
     setupLoading, setupError, clearSetupError,
-    // Data migration
-    dataMigrationLogs, dataMigrationComplete, dataMigrationRunning,
-    testMigrationTarget, startDataMigration, switchBackend,
-    resetDataMigration,
+    // Backups
+    backups, backupStats, backupLoading,
+    loadBackups, triggerBackup, downloadBackup, removeBackup,
+    adminRestoreBackup,
+    // Recovery key & master key rotation
+    adminDownloadRecoveryKey, adminRotateMasterKey,
+    // PG password rotation
+    rotatePgPassword,
     emergencyMode,
     emergencyDbStatus, checkDbStatus, emergencyCreateOwner,
   } = useAppStore();
@@ -70,20 +75,12 @@ export default function AdminPanel() {
   const logRef = useRef(null);
 
   // Provisioning state
-  const [dbBackend, setDbBackend] = useState('postgres');
+  const [setupMode, setSetupMode] = useState(null); // null | 'fresh' | 'restore'
   const [pgHost, setPgHost] = useState('');
   const [pgPort, setPgPort] = useState('5432');
   const [pgDb, setPgDb] = useState('');
   const [pgUser, setPgUser] = useState('');
   const [pgPass, setPgPass] = useState('');
-  const [sfAccount, setSfAccount] = useState('');
-  const [sfUser, setSfUser] = useState('');
-  const [sfAuthType, setSfAuthType] = useState('password');
-  const [sfPassword, setSfPassword] = useState('');
-  const [sfWarehouse, setSfWarehouse] = useState('SIMPLY_WH');
-  const [sfDatabase, setSfDatabase] = useState('SIMPLY_ANALYTICS');
-  const [sfSchema, setSfSchema] = useState('APP');
-  const [sfRole, setSfRole] = useState('SIMPLY_SVC_ROLE');
   const [dbTestResult, setDbTestResult] = useState(null);
   const [jwtSecret, setJwtSecret] = useState(() => generateHex(64));
   const [encKey, setEncKey] = useState(() => generateHex(32));
@@ -93,30 +90,20 @@ export default function AdminPanel() {
   const [ownerPassword, setOwnerPassword] = useState('');
   const [ownerConfirm, setOwnerConfirm] = useState('');
   const [ownerResult, setOwnerResult] = useState(null);
-  const [masterKeyCopied, setMasterKeyCopied] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
+  const [restoreBackupFile, setRestoreBackupFile] = useState(null);
+  const [restoreKeyFile, setRestoreKeyFile] = useState(null);
+  const [restoreResult, setRestoreResult] = useState(null);
 
-  // Data migration state
-  const [showMigrationWizard, setShowMigrationWizard] = useState(false);
-  const [destBackend, setDestBackend] = useState('postgres');
-  const [destHost, setDestHost] = useState('');
-  const [destPort, setDestPort] = useState('5432');
-  const [destDb, setDestDb] = useState('');
-  const [destUser, setDestUser] = useState('');
-  const [destPass, setDestPass] = useState('');
-  const [destSfAccount, setDestSfAccount] = useState('');
-  const [destSfUser, setDestSfUser] = useState('');
-  const [destSfAuthType, setDestSfAuthType] = useState('password');
-  const [destSfPassword, setDestSfPassword] = useState('');
-  const [destSfWarehouse, setDestSfWarehouse] = useState('');
-  const [destSfRole, setDestSfRole] = useState('');
-  const [destSfDatabase, setDestSfDatabase] = useState('');
-  const [destSfSchema, setDestSfSchema] = useState('APP');
-  const [destTestResult, setDestTestResult] = useState(null);
-  const [confirmMigrate, setConfirmMigrate] = useState(false);
-  const [confirmSwitch, setConfirmSwitch] = useState(false);
-  const [switchResult, setSwitchResult] = useState(null);
-  const migrationLogRef = useRef(null);
+  // PG password rotation (normal mode)
+  const [pgCurrentPass, setPgCurrentPass] = useState('');
+  const [pgNewPass, setPgNewPass] = useState('');
+  const [pgNewPassConfirm, setPgNewPassConfirm] = useState('');
+  const [pgPassResult, setPgPassResult] = useState(null);
+
+  // Backup restore (normal mode)
+  const [adminRestoreFile, setAdminRestoreFile] = useState(null);
+  const [adminRestoreKeyFile, setAdminRestoreKeyFile] = useState(null);
 
   // Emergency owner creation state
   const [emOwnerUsername, setEmOwnerUsername] = useState('');
@@ -135,7 +122,7 @@ export default function AdminPanel() {
   useEffect(() => {
     if (isProvisioning) {
       fetchSetupProgress();
-      fetchMasterKey();
+      detectBundledPg();
     } else if (emergencyMode) {
       checkDbStatus();
       loadAdminConfig();
@@ -143,6 +130,16 @@ export default function AdminPanel() {
       loadAdminConfig();
     }
   }, []);
+
+  // Pre-fill bundled PG when detected
+  useEffect(() => {
+    if (bundledPg?.detected && !pgHost) {
+      setPgHost(bundledPg.host);
+      setPgPort(bundledPg.port);
+      setPgDb(bundledPg.database);
+      setPgUser(bundledPg.user);
+    }
+  }, [bundledPg]);
 
   // Pre-fill owner fields when existing owner is detected
   useEffect(() => {
@@ -162,12 +159,13 @@ export default function AdminPanel() {
 
   // Normal mode: load section data when tab changes
   useEffect(() => {
-    if (!isProvisioning && tab !== 'system') {
-      handleLoadSection(tab);
-    }
-    if (!isProvisioning && tab === 'system') {
+    if (!isProvisioning && tab === 'backups') {
+      loadBackups();
+    } else if (!isProvisioning && tab === 'system') {
       loadSystemInfo();
       handleLoadSection('server');
+    } else if (!isProvisioning && tab !== 'backups') {
+      handleLoadSection(tab);
     }
   }, [tab, isProvisioning]);
 
@@ -176,14 +174,17 @@ export default function AdminPanel() {
     logRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [setupMigrationLogs, adminMigrationLogs]);
 
-  useEffect(() => {
-    migrationLogRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [dataMigrationLogs]);
 
   // --- Normal mode helpers ---
   const handleLoadSection = async (section) => {
-    const data = await loadAdminConfigSection(section);
-    if (data) setEditValues(data);
+    if (section === 'sso') {
+      const ssoData = await loadAdminConfigSection('sso');
+      const scimData = await loadAdminConfigSection('scim');
+      setEditValues({ ...ssoData, ...scimData });
+    } else {
+      const data = await loadAdminConfigSection(section);
+      if (data) setEditValues(data);
+    }
     setTestResult(null);
     setSaveResult(null);
   };
@@ -192,9 +193,9 @@ export default function AdminPanel() {
     setEditValues(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (overrideSection) => {
     setSaveResult(null);
-    const section = tab === 'system' ? 'server' : tab;
+    const section = overrideSection || (tab === 'system' ? 'server' : tab);
     const result = await updateAdminConfig(section, editValues);
     if (result?.success) {
       setSaveResult({ type: 'success', message: `Saved. Changed: ${result.changedKeys?.join(', ') || 'none'}` });
@@ -235,27 +236,28 @@ export default function AdminPanel() {
 
   const handleProvisionTestDb = async () => {
     setDbTestResult(null);
-    const config = dbBackend === 'postgres'
-      ? { backend: 'postgres', host: pgHost, port: pgPort, database: pgDb, user: pgUser, password: pgPass }
-      : { backend: 'snowflake', sfAccount, sfUser, sfAuthType, sfPassword, sfWarehouse, sfDatabase, sfSchema, sfRole };
-    const result = await testSetupDatabase(config);
-    setDbTestResult(result);
+    const config = { host: pgHost, port: pgPort, database: pgDb, user: pgUser, password: pgPass };
+    if (bundledPg?.detected) {
+      const result = await provisionDatabase(config);
+      setDbTestResult(result);
+      if (result?.success) {
+        setTimeout(() => setTab('security'), 800);
+      }
+    } else {
+      const result = await testSetupDatabase(config);
+      setDbTestResult(result);
+      if (result?.success) {
+        setTimeout(() => setTab('security'), 800);
+      }
+    }
   };
 
 
 
   const handleSaveAndMigrate = async () => {
     const config = {
-      METADATA_BACKEND: dbBackend,
-      ...(dbBackend === 'postgres' ? {
-        POSTGRES_HOST: pgHost, POSTGRES_PORT: pgPort, POSTGRES_DB: pgDb,
-        POSTGRES_USER: pgUser, POSTGRES_PASSWORD: pgPass,
-      } : {
-        SF_SERVICE_ACCOUNT: sfAccount, SF_SERVICE_USER: sfUser,
-        SF_SERVICE_AUTH_TYPE: sfAuthType, SF_SERVICE_PASSWORD: sfPassword,
-        SF_SERVICE_WAREHOUSE: sfWarehouse, SF_SERVICE_DATABASE: sfDatabase,
-        SF_SERVICE_SCHEMA: sfSchema, SF_SERVICE_ROLE: sfRole,
-      }),
+      POSTGRES_HOST: pgHost, POSTGRES_PORT: pgPort, POSTGRES_DB: pgDb,
+      POSTGRES_USER: pgUser, POSTGRES_PASSWORD: pgPass,
       DISABLE_REDIS: 'true',
       JWT_SECRET: jwtSecret,
       CREDENTIALS_ENCRYPTION_KEY: encKey,
@@ -285,6 +287,7 @@ export default function AdminPanel() {
     setOwnerResult(result);
     if (result?.success) {
       await completeSetup();
+      await downloadRecoveryKey();
       setSetupComplete(true);
       fetchSetupProgress();
     }
@@ -310,77 +313,32 @@ export default function AdminPanel() {
     if (result?.success) setEmOwnerComplete(true);
   };
 
-  const handleCopyKey = () => {
-    if (setupMasterKey) {
-      navigator.clipboard.writeText(setupMasterKey);
-      setMasterKeyCopied(true);
-      setTimeout(() => setMasterKeyCopied(false), 2000);
+  const handleRotatePgPassword = async () => {
+    setPgPassResult(null);
+    if (pgNewPass !== pgNewPassConfirm) {
+      setPgPassResult({ error: 'New passwords do not match' });
+      return;
+    }
+    const result = await rotatePgPassword(pgCurrentPass, pgNewPass);
+    setPgPassResult(result);
+    if (result?.success) {
+      setPgCurrentPass('');
+      setPgNewPass('');
+      setPgNewPassConfirm('');
     }
   };
 
-  // Data migration handlers
-  const buildDestConfig = () => {
-    if (destBackend === 'postgres') {
-      return { backend: 'postgres', host: destHost, port: destPort, database: destDb, user: destUser, password: destPass };
+  const handleSetupRestore = async () => {
+    if (!restoreBackupFile || !restoreKeyFile) return;
+    setRestoreResult(null);
+    const result = await restoreFromBackup(restoreBackupFile, restoreKeyFile);
+    setRestoreResult(result);
+    if (result?.success) {
+      setSetupComplete(true);
     }
-    return {
-      backend: 'snowflake',
-      account: destSfAccount,
-      user: destSfUser,
-      authType: destSfAuthType,
-      password: destSfPassword,
-      warehouse: destSfWarehouse,
-      role: destSfRole,
-      database: destSfDatabase,
-      schema: destSfSchema,
-    };
   };
 
-  const handleTestDestination = async () => {
-    setDestTestResult(null);
-    const result = await testMigrationTarget(buildDestConfig());
-    setDestTestResult(result);
-  };
-
-  const handleStartMigration = async () => {
-    setConfirmMigrate(false);
-    await startDataMigration(buildDestConfig());
-  };
-
-  const handleSwitchBackend = async () => {
-    setConfirmSwitch(false);
-    const result = await switchBackend(buildDestConfig());
-    setSwitchResult(result);
-  };
-
-  const handleResetMigration = () => {
-    resetDataMigration();
-    setShowMigrationWizard(false);
-    setDestTestResult(null);
-    setConfirmMigrate(false);
-    setConfirmSwitch(false);
-    setSwitchResult(null);
-    setDestHost('');
-    setDestDb('');
-    setDestUser('');
-    setDestPass('');
-    setDestSfAccount('');
-    setDestSfUser('');
-    setDestSfAuthType('password');
-    setDestSfPassword('');
-    setDestSfWarehouse('');
-    setDestSfRole('');
-    setDestSfDatabase('');
-    setDestSfSchema('APP');
-  };
-
-  const canTestDest = destBackend === 'postgres'
-    ? destHost && destDb && destUser && destPass
-    : destSfAccount && destSfUser && destSfPassword && destSfDatabase && destSfWarehouse;
-
-  const canNextDb = dbBackend === 'postgres'
-    ? pgHost && pgDb && pgUser && pgPass
-    : sfAccount && sfUser;
+  const canNextDb = pgHost && pgDb && pgUser && pgPass;
   const canNextOwner = ownerUsername && ownerEmail && ownerPassword && ownerPassword.length >= 8 && ownerPassword === ownerConfirm;
 
   const formatUptime = (secs) => {
@@ -403,7 +361,7 @@ export default function AdminPanel() {
         <div className="admin-header-content">
           <div>
             <h1>{isProvisioning ? 'Initial Setup' : emergencyMode ? 'Emergency Administration' : 'Administration'}</h1>
-            <p>{isProvisioning ? 'Configure your Simply Analytics deployment' : emergencyMode ? (dbIsReachable ? 'Authenticated via master key. Manage your owner account below.' : 'Database may be unreachable. Only configuration changes are available.') : 'Server configuration and management'}</p>
+            <p>{isProvisioning ? 'Configure your Simply Analytics deployment' : emergencyMode ? (dbIsReachable ? 'Authenticated via recovery key. Manage your owner account below.' : 'Database may be unreachable. Only configuration changes are available.') : 'Server configuration and management'}</p>
           </div>
         </div>
       </header>
@@ -423,32 +381,59 @@ export default function AdminPanel() {
             ) : dbIsReachable ? (
               <><strong>Owner Recovery</strong> — The database is reachable. You can reset the owner account credentials below, then sign out and sign in normally.</>
             ) : (
-              <><strong>Emergency Mode</strong> — You are authenticated via master key because the database is unreachable. Update your database credentials below, then sign out and back in normally.</>
+              <><strong>Emergency Mode</strong> — You are authenticated via recovery key because the database is unreachable. Update your database credentials below, then sign out and back in normally.</>
             )}
           </div>
         </div>
       )}
 
-      {/* Master key banner (provisioning only, shown once) */}
-      {isProvisioning && setupMasterKey && (
-        <div className="provisioning-banner">
-          <h2><FiKey /> Master Encryption Key</h2>
-          <p>Your configuration file is encrypted with this key. Save it securely — it will not be shown again.</p>
-          <div className="admin-master-key-box">
-            <div className="admin-master-key-value">{setupMasterKey}</div>
-            <button className="admin-btn admin-btn-secondary" onClick={handleCopyKey}>
-              {masterKeyCopied ? <><FiCheck /> Copied</> : <><FiCopy /> Copy</>}
-            </button>
+      {/* Setup mode chooser (provisioning only, before wizard) */}
+      {isProvisioning && !setupMode && !setupComplete && (
+        <div className="admin-setup-chooser">
+          <div className="admin-setup-card" onClick={() => setSetupMode('fresh')}>
+            <FiDatabase style={{ fontSize: 32, marginBottom: 8 }} />
+            <h3>Fresh Setup</h3>
+            <p>Set up a new Simply Analytics instance from scratch.</p>
           </div>
-          <div className="admin-master-key-warning">
-            <FiAlertTriangle />
-            <span>If this key is lost, you will need to re-run setup from scratch.</span>
+          <div className="admin-setup-card" onClick={() => setSetupMode('restore')}>
+            <FiUpload style={{ fontSize: 32, marginBottom: 8 }} />
+            <h3>Restore from Backup</h3>
+            <p>Restore from an existing environment's backup.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Restore from Backup (provisioning) */}
+      {isProvisioning && setupMode === 'restore' && !setupComplete && (
+        <div className="admin-section-wrapper">
+          <div className="admin-section-header">
+            <div>
+              <h2><FiUpload /> Restore from Backup</h2>
+              <p>Upload a backup archive and the recovery key file from your previous environment.</p>
+            </div>
+          </div>
+          <div className="admin-section-card">
+            <div className="admin-field">
+              <label>Backup Archive (.tar.gz)</label>
+              <input type="file" accept=".tar.gz,.gz" onChange={e => setRestoreBackupFile(e.target.files[0])} />
+            </div>
+            <div className="admin-field">
+              <label>Recovery Key File (.key)</label>
+              <input type="file" accept=".key" onChange={e => setRestoreKeyFile(e.target.files[0])} />
+            </div>
+            {restoreResult?.error && <div className="admin-result error"><FiAlertTriangle /> {restoreResult.error}</div>}
+            <div className="admin-btn-row">
+              <button className="admin-btn admin-btn-secondary" onClick={() => setSetupMode(null)}><FiArrowLeft /> Back</button>
+              <button className="admin-btn admin-btn-primary" disabled={!restoreBackupFile || !restoreKeyFile || setupLoading} onClick={handleSetupRestore}>
+                {setupLoading ? <><FiLoader className="spinner" /> Restoring...</> : <><FiUpload /> Restore</>}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Provisioning stepper */}
-      {isProvisioning && setupProgress && !setupComplete && (
+      {isProvisioning && setupMode === 'fresh' && setupProgress && !setupComplete && (
         <div className="provisioning-stepper">
           {PROVISION_TABS.map((s, i) => {
             const done = isStepDone(s.id);
@@ -557,29 +542,37 @@ export default function AdminPanel() {
       )}
 
       {/* ===================== DATABASE TAB ===================== */}
-      {tab === 'database' && !setupComplete && (
+      {tab === 'database' && !setupComplete && setupMode === 'fresh' && (
         <div className="admin-section-wrapper">
           <div className="admin-section-header">
             <div>
               <h2><FiDatabase /> Database Connection</h2>
-              <p>{isProvisioning ? 'Choose your metadata backend and provide connection details.' : `Metadata backend: ${adminConfig?.database?.METADATA_BACKEND || 'postgres'}`}</p>
+              <p>{isProvisioning ? 'Configure your PostgreSQL connection.' : 'PostgreSQL metadata backend'}</p>
             </div>
           </div>
           <div className="admin-section-card">
 
           {isProvisioning ? (
             <>
-              <div className="admin-backend-selector">
-                <div className={`admin-backend-option ${dbBackend === 'postgres' ? 'selected' : ''}`} onClick={() => setDbBackend('postgres')}>
-                  <h4>PostgreSQL</h4>
-                  <p>Recommended for most deployments</p>
-                </div>
-                <div className={`admin-backend-option ${dbBackend === 'snowflake' ? 'selected' : ''}`} onClick={() => setDbBackend('snowflake')}>
-                  <h4>Snowflake</h4>
-                  <p>Use Snowflake hybrid tables</p>
-                </div>
-              </div>
-              {dbBackend === 'postgres' ? (
+              {bundledPg?.detected ? (
+                <>
+                  <div className="admin-result success" style={{ marginBottom: 12 }}>
+                    <FiCheck /> Bundled PostgreSQL detected. Set the database credentials the server will use to connect.
+                  </div>
+                  <div className="admin-field-row">
+                    <div className="admin-field"><label>Host</label><input value={pgHost} readOnly className="admin-input-readonly" /></div>
+                    <div className="admin-field"><label>Port</label><input value={pgPort} readOnly className="admin-input-readonly" /></div>
+                  </div>
+                  <div className="admin-field"><label>Database</label><input value={pgDb} readOnly className="admin-input-readonly" /></div>
+                  <span className="admin-field-hint">Host, port, and database are managed by Docker and cannot be changed here.</span>
+                  <div className="admin-field-row">
+                    <div className="admin-field"><label>Database Username</label><input value={pgUser} onChange={e => setPgUser(e.target.value)} placeholder="e.g. simply" /></div>
+                    <div className="admin-field"><label>Database Password</label><input type="password" value={pgPass} onChange={e => setPgPass(e.target.value)} placeholder="Choose a secure password" /></div>
+                  </div>
+                  <span className="admin-field-hint">These are PostgreSQL credentials — not your application login. Your app login is created in a later step.</span>
+                  {pgPass && pgPass.length < 8 && <div className="admin-result error"><FiAlertTriangle /> Password must be at least 8 characters</div>}
+                </>
+              ) : (
                 <>
                   <div className="admin-field-row">
                     <div className="admin-field"><label>Host</label><input value={pgHost} onChange={e => setPgHost(e.target.value)} /></div>
@@ -591,77 +584,30 @@ export default function AdminPanel() {
                     <div className="admin-field"><label>Password</label><input type="password" value={pgPass} onChange={e => setPgPass(e.target.value)} /></div>
                   </div>
                 </>
-              ) : (
-                <>
-                  <div className="admin-field"><label>Account Identifier</label><input value={sfAccount} onChange={e => setSfAccount(e.target.value)} placeholder="org-account" /></div>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Service User</label><input value={sfUser} onChange={e => setSfUser(e.target.value)} /></div>
-                    <div className="admin-field">
-                      <label>Auth Type</label>
-                      <select value={sfAuthType} onChange={e => setSfAuthType(e.target.value)}>
-                        <option value="password">Password</option>
-                        <option value="keypair">Key Pair</option>
-                        <option value="pat">PAT</option>
-                      </select>
-                    </div>
-                  </div>
-                  {sfAuthType === 'password' && (
-                    <div className="admin-field"><label>Password</label><input type="password" value={sfPassword} onChange={e => setSfPassword(e.target.value)} /></div>
-                  )}
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Warehouse</label><input value={sfWarehouse} onChange={e => setSfWarehouse(e.target.value)} /></div>
-                    <div className="admin-field"><label>Role</label><input value={sfRole} onChange={e => setSfRole(e.target.value)} /></div>
-                  </div>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Database</label><input value={sfDatabase} onChange={e => setSfDatabase(e.target.value)} /></div>
-                    <div className="admin-field"><label>Schema</label><input value={sfSchema} onChange={e => setSfSchema(e.target.value)} /></div>
-                  </div>
-                </>
               )}
 
               <div className="admin-btn-row">
-                <button className="admin-btn admin-btn-secondary" onClick={handleProvisionTestDb} disabled={setupLoading || !canNextDb}>
-                  {setupLoading ? <><FiLoader className="spinner" /> Testing...</> : <><FiRefreshCw /> Test Connection</>}
-                </button>
-                <button className="admin-btn admin-btn-primary" disabled={!canNextDb} onClick={() => setTab('security')}>
-                  Next <FiArrowRight />
+                <button className="admin-btn admin-btn-primary" onClick={handleProvisionTestDb} disabled={setupLoading || !canNextDb || (pgPass && pgPass.length < 8)}>
+                  {setupLoading ? <><FiLoader className="spinner" /> {bundledPg?.detected ? 'Provisioning...' : 'Testing...'}</> : <><FiCheck /> {bundledPg?.detected ? 'Save & Continue' : 'Test Connection'}</>}
                 </button>
               </div>
-              {dbTestResult && <div className={`admin-result ${dbTestResult.success ? 'success' : 'error'}`}>{dbTestResult.success ? <FiCheck /> : <FiAlertTriangle />}{dbTestResult.message}</div>}
+              {dbTestResult && (
+                <div className={`admin-result ${dbTestResult.success ? 'success' : 'error'}`}>
+                  {dbTestResult.success ? <FiCheck /> : <FiAlertTriangle />}{dbTestResult.message}
+                </div>
+              )}
             </>
           ) : (
             <>
-              {editValues.METADATA_BACKEND === 'postgres' || !editValues.METADATA_BACKEND ? (
-                <>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Host</label><input value={editValues.POSTGRES_HOST || ''} readOnly className="admin-input-readonly" /></div>
-                    <div className="admin-field"><label>Port</label><input value={editValues.POSTGRES_PORT || ''} readOnly className="admin-input-readonly" /></div>
-                  </div>
-                  <div className="admin-field"><label>Database</label><input value={editValues.POSTGRES_DB || ''} readOnly className="admin-input-readonly" /></div>
-                  <div className="admin-hint">Host, port, and database can only be changed via the Migration Wizard below.</div>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Username</label><input value={editValues.POSTGRES_USER || ''} onChange={e => handleFieldChange('POSTGRES_USER', e.target.value)} /></div>
-                    <div className="admin-field"><label>Password</label><input type="password" value={editValues.POSTGRES_PASSWORD || ''} onChange={e => handleFieldChange('POSTGRES_PASSWORD', e.target.value)} /></div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="admin-field"><label>Account</label><input value={editValues.SF_SERVICE_ACCOUNT || ''} readOnly className="admin-input-readonly" /></div>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Database</label><input value={editValues.SF_SERVICE_DATABASE || ''} readOnly className="admin-input-readonly" /></div>
-                    <div className="admin-field"><label>Schema</label><input value={editValues.SF_SERVICE_SCHEMA || ''} readOnly className="admin-input-readonly" /></div>
-                  </div>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>Warehouse</label><input value={editValues.SF_SERVICE_WAREHOUSE || ''} readOnly className="admin-input-readonly" /></div>
-                    <div className="admin-field"><label>Role</label><input value={editValues.SF_SERVICE_ROLE || ''} readOnly className="admin-input-readonly" /></div>
-                  </div>
-                  <div className="admin-hint">Account, database, schema, warehouse, and role can only be changed via the Migration Wizard below.</div>
-                  <div className="admin-field-row">
-                    <div className="admin-field"><label>User</label><input value={editValues.SF_SERVICE_USER || ''} onChange={e => handleFieldChange('SF_SERVICE_USER', e.target.value)} /></div>
-                    <div className="admin-field"><label>Auth Type</label><input value={editValues.SF_SERVICE_AUTH_TYPE || ''} onChange={e => handleFieldChange('SF_SERVICE_AUTH_TYPE', e.target.value)} /></div>
-                  </div>
-                </>
-              )}
+              <div className="admin-field-row">
+                <div className="admin-field"><label>Host</label><input value={editValues.POSTGRES_HOST || ''} readOnly className="admin-input-readonly" /></div>
+                <div className="admin-field"><label>Port</label><input value={editValues.POSTGRES_PORT || ''} readOnly className="admin-input-readonly" /></div>
+              </div>
+              <div className="admin-field"><label>Database</label><input value={editValues.POSTGRES_DB || ''} readOnly className="admin-input-readonly" /></div>
+              <div className="admin-field-row">
+                <div className="admin-field"><label>Username</label><input value={editValues.POSTGRES_USER || ''} onChange={e => handleFieldChange('POSTGRES_USER', e.target.value)} /></div>
+                <div className="admin-field"><label>Password</label><input type="password" value={editValues.POSTGRES_PASSWORD || ''} onChange={e => handleFieldChange('POSTGRES_PASSWORD', e.target.value)} /></div>
+              </div>
               <div className="admin-btn-row">
                 <button className="admin-btn admin-btn-secondary" onClick={handleTestDb} disabled={adminLoading}><FiRefreshCw /> Test Connection</button>
                 <button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={adminLoading}><FiSave /> Save Changes</button>
@@ -688,140 +634,196 @@ export default function AdminPanel() {
               )}
 
               <div className="admin-divider" />
-              <div className="admin-subsection-title"><FiDatabase /> Database Migration</div>
-              <div className="admin-subsection-subtitle">
-                Migrate all data to a different database instance or backend type. Your current database will not be modified.
+              <div className="admin-subsection-title"><FiKey /> Change Database Password</div>
+              <div className="admin-subsection-subtitle">Update the PostgreSQL password used by the application.</div>
+              <div className="admin-field"><label>Current Password</label><input type="password" value={pgCurrentPass} onChange={e => setPgCurrentPass(e.target.value)} /></div>
+              <div className="admin-field-row">
+                <div className="admin-field"><label>New Password</label><input type="password" value={pgNewPass} onChange={e => setPgNewPass(e.target.value)} /></div>
+                <div className="admin-field"><label>Confirm New Password</label><input type="password" value={pgNewPassConfirm} onChange={e => setPgNewPassConfirm(e.target.value)} /></div>
               </div>
-
-              {!showMigrationWizard ? (
-                <button className="admin-btn admin-btn-secondary" onClick={() => setShowMigrationWizard(true)}>
-                  <FiPlay /> Start Migration Wizard
-                </button>
-              ) : (
-                <div className="admin-migration-wizard">
-                  <div className="admin-backend-selector">
-                    <div className={`admin-backend-option ${destBackend === 'postgres' ? 'selected' : ''}`} onClick={() => { if (!dataMigrationRunning) setDestBackend('postgres'); }}>
-                      <h4>PostgreSQL</h4>
-                      <p>Migrate to a PostgreSQL instance</p>
-                    </div>
-                    <div className={`admin-backend-option ${destBackend === 'snowflake' ? 'selected' : ''}`} onClick={() => { if (!dataMigrationRunning) setDestBackend('snowflake'); }}>
-                      <h4>Snowflake</h4>
-                      <p>Migrate to a Snowflake account</p>
-                    </div>
-                  </div>
-
-                  {destBackend === 'postgres' && (
-                    <>
-                      <div className="admin-field-row">
-                        <div className="admin-field"><label>Destination Host</label><input value={destHost} onChange={e => setDestHost(e.target.value)} placeholder="e.g. new-db.example.com" disabled={dataMigrationRunning} /></div>
-                        <div className="admin-field"><label>Port</label><input value={destPort} onChange={e => setDestPort(e.target.value)} disabled={dataMigrationRunning} /></div>
-                      </div>
-                      <div className="admin-field"><label>Database Name</label><input value={destDb} onChange={e => setDestDb(e.target.value)} placeholder="simply_analytics" disabled={dataMigrationRunning} /></div>
-                      <div className="admin-field-row">
-                        <div className="admin-field"><label>Username</label><input value={destUser} onChange={e => setDestUser(e.target.value)} disabled={dataMigrationRunning} /></div>
-                        <div className="admin-field"><label>Password</label><input type="password" value={destPass} onChange={e => setDestPass(e.target.value)} disabled={dataMigrationRunning} /></div>
-                      </div>
-                    </>
-                  )}
-
-                  {destBackend === 'snowflake' && (
-                    <>
-                      <div className="admin-field-row">
-                        <div className="admin-field"><label>Account</label><input value={destSfAccount} onChange={e => setDestSfAccount(e.target.value)} placeholder="e.g. xy12345.us-east-1" disabled={dataMigrationRunning} /></div>
-                        <div className="admin-field">
-                          <label>Auth Type</label>
-                          <select value={destSfAuthType} onChange={e => setDestSfAuthType(e.target.value)} disabled={dataMigrationRunning}>
-                            <option value="password">Password</option>
-                            <option value="pat">Personal Access Token</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="admin-field-row">
-                        <div className="admin-field"><label>User</label><input value={destSfUser} onChange={e => setDestSfUser(e.target.value)} disabled={dataMigrationRunning} /></div>
-                        <div className="admin-field"><label>{destSfAuthType === 'pat' ? 'Token' : 'Password'}</label><input type="password" value={destSfPassword} onChange={e => setDestSfPassword(e.target.value)} disabled={dataMigrationRunning} /></div>
-                      </div>
-                      <div className="admin-field-row">
-                        <div className="admin-field"><label>Database</label><input value={destSfDatabase} onChange={e => setDestSfDatabase(e.target.value)} placeholder="SIMPLY_ANALYTICS" disabled={dataMigrationRunning} /></div>
-                        <div className="admin-field"><label>Schema</label><input value={destSfSchema} onChange={e => setDestSfSchema(e.target.value)} placeholder="APP" disabled={dataMigrationRunning} /></div>
-                      </div>
-                      <div className="admin-field-row">
-                        <div className="admin-field"><label>Warehouse</label><input value={destSfWarehouse} onChange={e => setDestSfWarehouse(e.target.value)} placeholder="SIMPLY_WH" disabled={dataMigrationRunning} /></div>
-                        <div className="admin-field"><label>Role</label><input value={destSfRole} onChange={e => setDestSfRole(e.target.value)} placeholder="SIMPLY_SVC_ROLE" disabled={dataMigrationRunning} /></div>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="admin-btn-row">
-                    <button className="admin-btn admin-btn-secondary" onClick={handleTestDestination} disabled={!canTestDest || adminLoading || dataMigrationRunning}>
-                      {adminLoading ? <><FiLoader className="spinner" /> Testing...</> : <><FiRefreshCw /> Test Destination</>}
-                    </button>
-                    <button className="admin-btn admin-btn-primary" onClick={() => setConfirmMigrate(true)} disabled={!canTestDest || dataMigrationRunning || dataMigrationComplete}>
-                      <FiPlay /> Start Migration
-                    </button>
-                    <button className="admin-btn admin-btn-secondary" onClick={handleResetMigration} disabled={dataMigrationRunning}>
-                      Cancel
-                    </button>
-                  </div>
-
-                  {destTestResult && (
-                    <div className={`admin-result ${destTestResult.success ? 'success' : 'error'}`}>{destTestResult.message}</div>
-                  )}
-
-                  {dataMigrationLogs.length > 0 && (
-                    <div className="admin-migration-log">
-                      {dataMigrationLogs.map((line, i) => (
-                        <div key={i} className={`log-line ${line.startsWith('ERROR') ? 'log-error' : ''}`}>{line}</div>
-                      ))}
-                      <div ref={migrationLogRef} />
-                    </div>
-                  )}
-
-                  {dataMigrationComplete && (
-                    <div className="admin-migration-complete">
-                      {dataMigrationProgress?.success ? (
-                        <>
-                          <div className="admin-result success">Migration verified. All data has been copied and confirmed in the destination database.</div>
-                          <p style={{ margin: '12px 0', color: 'var(--text-secondary)' }}>
-                            Would you like to switch to the new database now? Your current database will remain intact as a backup.
-                          </p>
-                          <div className="admin-btn-row">
-                            <button className="admin-btn admin-btn-success" onClick={() => setConfirmSwitch(true)}>
-                              Switch to New Database
-                            </button>
-                            <button className="admin-btn admin-btn-secondary" onClick={handleResetMigration}>
-                              Keep Current Database
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="admin-result error">Migration completed with verification warnings. Row count mismatches were detected.</div>
-                          {dataMigrationProgress?.warnings?.map((w, i) => (
-                            <div key={i} className="admin-result error" style={{ marginTop: 4 }}>{w}</div>
-                          ))}
-                          <p style={{ margin: '12px 0', color: 'var(--text-secondary)' }}>
-                            The destination database may be incomplete. Investigate the mismatches above before retrying. Your current database is unchanged.
-                          </p>
-                          <div className="admin-btn-row">
-                            <button className="admin-btn admin-btn-secondary" onClick={handleResetMigration}>
-                              Dismiss
-                            </button>
-                          </div>
-                        </>
-                      )}
-                      {switchResult && (
-                        <div className={`admin-result ${switchResult.success ? 'success' : 'error'}`}>
-                          {switchResult.message}
-                        </div>
-                      )}
-                    </div>
-                  )}
+              {pgNewPass && pgNewPassConfirm && pgNewPass !== pgNewPassConfirm && <div className="admin-result error">Passwords do not match</div>}
+              <button className="admin-btn admin-btn-primary" disabled={!pgCurrentPass || !pgNewPass || pgNewPass !== pgNewPassConfirm || adminLoading} onClick={handleRotatePgPassword}>
+                <FiRefreshCw /> Update Password
+              </button>
+              {pgPassResult && (
+                <div className={`admin-result ${pgPassResult.success ? 'success' : 'error'}`}>
+                  {pgPassResult.success ? <><FiCheck /> {pgPassResult.message}</> : <><FiAlertTriangle /> {pgPassResult.error}</>}
                 </div>
               )}
             </>
           )}
           </div>
         </div>
+      )}
+
+      {/* ===================== DATABASE TAB (normal mode) ===================== */}
+      {tab === 'database' && !isProvisioning && (
+        <>
+        <div className="admin-section-wrapper">
+          <div className="admin-section-header">
+            <div>
+              <h2><FiKey /> Database Credentials</h2>
+              <p>Update the PostgreSQL credentials used by the application</p>
+            </div>
+          </div>
+          <div className="admin-section-card">
+            <div className="admin-field"><label>Current Password</label><input type="password" value={pgCurrentPass} onChange={e => setPgCurrentPass(e.target.value)} /></div>
+            <div className="admin-field-row">
+              <div className="admin-field"><label>New Password</label><input type="password" value={pgNewPass} onChange={e => setPgNewPass(e.target.value)} /></div>
+              <div className="admin-field"><label>Confirm New Password</label><input type="password" value={pgNewPassConfirm} onChange={e => setPgNewPassConfirm(e.target.value)} /></div>
+            </div>
+            {pgNewPass && pgNewPassConfirm && pgNewPass !== pgNewPassConfirm && <div className="admin-result error">Passwords do not match</div>}
+            <div className="admin-btn-row">
+              <button className="admin-btn admin-btn-secondary" onClick={handleTestDb} disabled={adminLoading}><FiRefreshCw /> Test Connection</button>
+              <button className="admin-btn admin-btn-primary" disabled={!pgCurrentPass || !pgNewPass || pgNewPass !== pgNewPassConfirm || adminLoading} onClick={handleRotatePgPassword}>
+                <FiRefreshCw /> Update Password
+              </button>
+            </div>
+            {testResult && <div className={`admin-result ${testResult.success ? 'success' : 'error'}`}>{testResult.success ? <FiCheck /> : <FiAlertTriangle />}{testResult.message}</div>}
+            {pgPassResult && (
+              <div className={`admin-result ${pgPassResult.success ? 'success' : 'error'}`}>
+                {pgPassResult.success ? <><FiCheck /> {pgPassResult.message}</> : <><FiAlertTriangle /> {pgPassResult.error}</>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="admin-section-wrapper">
+          <div className="admin-section-header">
+            <div>
+              <h2><FiRefreshCw /> Schema Updates</h2>
+              <p>Apply pending database migrations</p>
+            </div>
+          </div>
+          <div className="admin-section-card">
+            <button className="admin-btn admin-btn-primary" onClick={runAdminMigrations} disabled={adminLoading}>
+              {adminLoading ? <><FiLoader className="spinner" /> Running...</> : <><FiPlay /> Run Schema Migrations</>}
+            </button>
+            {adminMigrationLogs.length > 0 && (
+              <div className="admin-migration-log">
+                {adminMigrationLogs.map((line, i) => <div key={i} className="log-line">{line}</div>)}
+                <div ref={logRef} />
+              </div>
+            )}
+            {adminMigrationResult && (
+              <div className={`admin-result ${adminMigrationResult.success ? 'success' : 'error'}`}>
+                {adminMigrationResult.success ? <><FiCheck /> Schema is up to date</> : <><FiAlertTriangle /> Errors: {adminMigrationResult.errors?.join(', ')}</>}
+              </div>
+            )}
+          </div>
+        </div>
+        </>
+      )}
+
+      {/* ===================== BACKUPS & MIGRATION TAB ===================== */}
+      {tab === 'backups' && !isProvisioning && (
+        <>
+          <div className="admin-section-wrapper">
+            <div className="admin-section-header">
+              <div>
+                <h2><FiHardDrive /> Automated Backups</h2>
+                <p>
+                  {backupStats
+                    ? `Last backup: ${backupStats.lastBackupAt ? new Date(backupStats.lastBackupAt).toLocaleString() : 'never'} | ${backupStats.count} backup(s) stored (${backupStats.totalSizeMB} MB)`
+                    : 'Loading backup status...'}
+                </p>
+              </div>
+              <button className="admin-btn admin-btn-primary" onClick={triggerBackup} disabled={backupLoading}>
+                {backupLoading ? <><FiLoader className="spinner" /> Working...</> : <><FiHardDrive /> Back Up Now</>}
+              </button>
+            </div>
+            <div className="admin-section-card">
+              {backups.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)' }}>No backups yet. Click "Back Up Now" to create one.</p>
+              ) : (
+                <table className="admin-backup-table">
+                  <thead>
+                    <tr><th>Date</th><th>Size</th><th>App Version</th><th>Schema</th><th>Actions</th></tr>
+                  </thead>
+                  <tbody>
+                    {backups.map(b => (
+                      <tr key={b.id}>
+                        <td>{new Date(b.createdAt).toLocaleString()}</td>
+                        <td>{(b.size / 1024 / 1024).toFixed(1)} MB</td>
+                        <td>{b.appVersion}</td>
+                        <td>v{b.schemaVersion}</td>
+                        <td>
+                          <button className="admin-btn admin-btn-sm" onClick={() => downloadBackup(b.id, b.filename)}><FiDownload /></button>
+                          <button className="admin-btn admin-btn-sm admin-btn-danger" onClick={() => removeBackup(b.id)}><FiTrash2 /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              <div className="admin-divider" />
+              <div className="admin-subsection-title"><FiUpload /> Restore from Backup</div>
+              <div className="admin-subsection-subtitle">Upload a backup archive and the recovery key file to restore.</div>
+              <div className="admin-field-row">
+                <div className="admin-field">
+                  <label>Backup Archive (.tar.gz)</label>
+                  <input type="file" accept=".tar.gz,.gz" onChange={e => setAdminRestoreFile(e.target.files[0])} />
+                </div>
+                <div className="admin-field">
+                  <label>Recovery Key File (.key)</label>
+                  <input type="file" accept=".key" onChange={e => setAdminRestoreKeyFile(e.target.files[0])} />
+                </div>
+              </div>
+              <button className="admin-btn admin-btn-danger" disabled={!adminRestoreFile || !adminRestoreKeyFile || adminLoading}
+                onClick={async () => {
+                  const result = await adminRestoreBackup(adminRestoreFile, adminRestoreKeyFile);
+                  if (result?.success) alert('Backup restored successfully. The app will reload.');
+                  else alert(result?.error || 'Restore failed');
+                }}>
+                <FiUpload /> Restore
+              </button>
+            </div>
+          </div>
+
+          <div className="admin-section-wrapper">
+            <div className="admin-section-header">
+              <div>
+                <h2><FiGlobe /> Migrate to a New Environment</h2>
+                <p>Move your entire Simply Analytics instance to a different cloud, region, or server.</p>
+              </div>
+            </div>
+            <div className="admin-section-card">
+              <div className="admin-migration-steps">
+                <div className="admin-migration-step">
+                  <div className="admin-step-number">1</div>
+                  <div>
+                    <h4>Create Migration Package</h4>
+                    <p>Create a fresh backup and download it along with your recovery key.</p>
+                    <div className="admin-btn-row" style={{ marginTop: 8 }}>
+                      <button className="admin-btn admin-btn-primary" onClick={async () => { await triggerBackup(); }} disabled={backupLoading}>
+                        <FiHardDrive /> Back Up Now
+                      </button>
+                      <button className="admin-btn admin-btn-secondary" onClick={adminDownloadRecoveryKey}>
+                        <FiDownload /> Download Recovery Key
+                      </button>
+                    </div>
+                    <span className="admin-field-hint">You will need both files to restore on the new server.</span>
+                  </div>
+                </div>
+                <div className="admin-migration-step">
+                  <div className="admin-step-number">2</div>
+                  <div>
+                    <h4>Deploy New Environment</h4>
+                    <p>Run <code>docker-compose up</code> on your new server. Open the app — you'll see the setup wizard.</p>
+                  </div>
+                </div>
+                <div className="admin-migration-step">
+                  <div className="admin-step-number">3</div>
+                  <div>
+                    <h4>Restore on New Server</h4>
+                    <p>In the setup wizard, choose "Restore from Backup", upload both files. Your new instance will be fully restored with a new recovery key.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ===================== SECURITY TAB ===================== */}
@@ -880,11 +882,16 @@ export default function AdminPanel() {
               </div>
               <div className="admin-field"><label>Session Timeout (minutes, inactivity)</label><input value={editValues.SESSION_TIMEOUT_MINUTES || '20'} onChange={e => handleFieldChange('SESSION_TIMEOUT_MINUTES', e.target.value)} placeholder="20" /></div>
               <div className="admin-divider" />
-              <div className="admin-subsection-title"><FiKey /> Key Rotation</div>
-              <div className="admin-subsection-subtitle">Rotating keys is irreversible. JWT rotation signs out all users.</div>
+              <div className="admin-subsection-title"><FiKey /> Key Management</div>
               <div className="admin-btn-row">
+                <button className="admin-btn admin-btn-secondary" onClick={adminDownloadRecoveryKey}>
+                  <FiDownload /> Download Recovery Key
+                </button>
+              </div>
+              <div className="admin-btn-row" style={{ marginTop: 8 }}>
                 <button className="admin-btn admin-btn-danger" onClick={() => setConfirmRotate('jwt')}><FiRefreshCw /> Rotate JWT Secret</button>
                 <button className="admin-btn admin-btn-danger" onClick={() => setConfirmRotate('encryption')}><FiRefreshCw /> Rotate Encryption Key</button>
+                <button className="admin-btn admin-btn-danger" onClick={() => setConfirmRotate('recovery')}><FiRefreshCw /> Rotate Recovery Key</button>
               </div>
               {rotateResult && <div className={`admin-result ${rotateResult.success ? 'success' : 'error'}`}>{rotateResult.success ? <FiCheck /> : <FiAlertTriangle />}{rotateResult.message || rotateResult.error}</div>}
             </>
@@ -950,41 +957,27 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {tab === 'security' && !setupComplete && !isProvisioning && (
+      {/* ===================== RATE LIMITING (normal mode security) ===================== */}
+      {tab === 'security' && !isProvisioning && (
         <div className="admin-section-wrapper">
           <div className="admin-section-header">
             <div>
-              <h2><FiShield /> MFA Policy</h2>
-              <p>Multi-factor authentication settings for TOTP (authenticator apps) and passkeys</p>
+              <h2><FiShield /> Rate Limiting</h2>
+              <p>Control the maximum number of API requests per client</p>
             </div>
           </div>
           <div className="admin-section-card">
-            <span className="admin-field-hint" style={{ marginBottom: '1rem', display: 'block' }}>
-              <strong>TOTP</strong> (authenticator app codes) works from any URL. <strong>Passkeys</strong> are locked to the configured domain — users who access from multiple URLs should use TOTP.
-              All fields below default from your Frontend URL and only need to be set if your deployment domain differs.
-            </span>
             <div className="admin-field">
-              <label>Application Name</label>
-              <input value={editValues.APP_NAME || ''} onChange={e => handleFieldChange('APP_NAME', e.target.value)} placeholder="Simply Analytics" />
-              <span className="admin-field-hint">Displayed in authenticator apps and browser passkey prompts</span>
+              <label>Rate Limit (requests / 15 min)</label>
+              <input type="number" value={editValues.RATE_LIMIT_MAX || '1000'} onChange={e => handleFieldChange('RATE_LIMIT_MAX', e.target.value)} />
+              <span className="admin-field-hint">Maximum number of API requests allowed per IP address in a 15-minute window.</span>
             </div>
-            <div className="admin-field">
-              <label>Passkey Domain</label>
-              <input value={editValues.WEBAUTHN_RP_ID || ''} onChange={e => handleFieldChange('WEBAUTHN_RP_ID', e.target.value)} placeholder="Defaults to hostname from Frontend URL" />
-              <span className="admin-field-hint">Must match the domain users access the app from. Passkeys are locked to this domain.</span>
-            </div>
-            <div className="admin-field">
-              <label>Allowed Origins</label>
-              <input value={editValues.WEBAUTHN_ORIGIN || ''} onChange={e => handleFieldChange('WEBAUTHN_ORIGIN', e.target.value)} placeholder="Defaults to Frontend URL" />
-              <span className="admin-field-hint">Comma-separated URLs where passkeys are accepted (e.g. https://app.com, https://app.com:8080)</span>
-            </div>
-            <div className="admin-btn-row">
-              <button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={adminLoading}><FiSave /> Save Changes</button>
-            </div>
+            <div className="admin-btn-row"><button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={adminLoading}><FiSave /> Save Changes</button></div>
             {saveResult && <div className={`admin-result ${saveResult.type}`}>{saveResult.type === 'success' ? <FiCheck /> : <FiAlertTriangle />}{saveResult.message}</div>}
           </div>
         </div>
       )}
+
 
       {/* ===================== MIGRATIONS STEP (provisioning only) ===================== */}
       {tab === 'migrations' && isProvisioning && !setupComplete && (
@@ -1050,7 +1043,7 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ===================== SSO TAB (normal only) ===================== */}
+      {/* ===================== SSO & PROVISIONING TAB (normal only) ===================== */}
       {tab === 'sso' && !isProvisioning && (
         <div className="admin-section-wrapper">
           <div className="admin-section-header">
@@ -1066,21 +1059,13 @@ export default function AdminPanel() {
             <div className="admin-field"><label>SAML Certificate (PEM)</label><input value={editValues.SAML_CERT || ''} onChange={e => handleFieldChange('SAML_CERT', e.target.value)} /></div>
             <div className="admin-field"><label>SAML Callback URL</label><input value={editValues.SAML_CALLBACK_URL || ''} onChange={e => handleFieldChange('SAML_CALLBACK_URL', e.target.value)} /></div>
 
-            <div className="admin-divider" />
-            <div className="admin-subsection-title"><FiKey /> Snowflake OAuth</div>
-            <div className="admin-field"><label>OAuth Client ID</label><input value={editValues.SNOWFLAKE_OAUTH_CLIENT_ID || ''} onChange={e => handleFieldChange('SNOWFLAKE_OAUTH_CLIENT_ID', e.target.value)} /></div>
-            <div className="admin-field"><label>OAuth Client Secret</label><input type="password" value={editValues.SNOWFLAKE_OAUTH_CLIENT_SECRET || ''} onChange={e => handleFieldChange('SNOWFLAKE_OAUTH_CLIENT_SECRET', e.target.value)} /></div>
-            <div className="admin-field"><label>OAuth Redirect URI</label><input value={editValues.SNOWFLAKE_OAUTH_REDIRECT_URI || ''} onChange={e => handleFieldChange('SNOWFLAKE_OAUTH_REDIRECT_URI', e.target.value)} placeholder="http://localhost:3001/api/auth/callback" /></div>
-            <div className="admin-field"><label>Snowflake Account</label><input value={editValues.SNOWFLAKE_ACCOUNT || ''} onChange={e => handleFieldChange('SNOWFLAKE_ACCOUNT', e.target.value)} placeholder="your-account.snowflakecomputing.com" /></div>
-
-            <div className="admin-btn-row"><button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={adminLoading}><FiSave /> Save Changes</button></div>
+            <div className="admin-btn-row"><button className="admin-btn admin-btn-primary" onClick={() => handleSave('sso')} disabled={adminLoading}><FiSave /> Save Changes</button></div>
             {saveResult && <div className={`admin-result ${saveResult.type}`}>{saveResult.type === 'success' ? <FiCheck /> : <FiAlertTriangle />}{saveResult.message}</div>}
           </div>
         </div>
       )}
 
-      {/* ===================== SCIM TAB (normal only) ===================== */}
-      {tab === 'scim' && !isProvisioning && (
+      {tab === 'sso' && !isProvisioning && (
         <div className="admin-section-wrapper">
           <div className="admin-section-header">
             <div>
@@ -1090,17 +1075,41 @@ export default function AdminPanel() {
           </div>
           <div className="admin-section-card">
             <div className="admin-toggle-wrapper"><label>Enable SCIM</label><input type="checkbox" className="admin-toggle" checked={editValues.SCIM_ENABLED === 'true'} onChange={e => handleFieldChange('SCIM_ENABLED', e.target.checked ? 'true' : 'false')} /></div>
-            <div className="admin-field"><label>SCIM Bearer Token</label><input type="password" value={editValues.SCIM_BEARER_TOKEN || ''} onChange={e => handleFieldChange('SCIM_BEARER_TOKEN', e.target.value)} /></div>
-            <div className="admin-btn-row"><button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={adminLoading}><FiSave /> Save Changes</button></div>
+
+            <div className="admin-field">
+              <label>SCIM Endpoint URL</label>
+              <div className="admin-field-row">
+                <input value={`${adminConfig?.server?.FRONTEND_URL || window.location.origin}/scim/v2`} readOnly className="admin-input-readonly" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+                <button className="admin-btn admin-btn-secondary" onClick={() => navigator.clipboard.writeText(`${adminConfig?.server?.FRONTEND_URL || window.location.origin}/scim/v2`)} style={{ whiteSpace: 'nowrap' }}><FiCopy /> Copy</button>
+              </div>
+              <span className="admin-field-hint">Provide this URL to your identity provider (Okta, Azure AD, etc.)</span>
+            </div>
+
+            <div className="admin-field">
+              <label>Bearer Token</label>
+              <div className="admin-field-row">
+                <input value={editValues.SCIM_BEARER_TOKEN || ''} readOnly className="admin-input-readonly" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+                <button className="admin-btn admin-btn-secondary" onClick={() => {
+                  if (editValues.SCIM_BEARER_TOKEN) navigator.clipboard.writeText(editValues.SCIM_BEARER_TOKEN);
+                }} style={{ whiteSpace: 'nowrap' }}><FiCopy /> Copy</button>
+              </div>
+              <span className="admin-field-hint">Copy this token into your identity provider's SCIM configuration.</span>
+            </div>
+
+            <div className="admin-btn-row">
+              <button className="admin-btn admin-btn-secondary" onClick={() => {
+                handleFieldChange('SCIM_BEARER_TOKEN', generateHex(32));
+              }}><FiRefreshCw /> Generate New Token</button>
+              <button className="admin-btn admin-btn-primary" onClick={() => handleSave('scim')} disabled={adminLoading}><FiSave /> Save Changes</button>
+            </div>
+            <span className="admin-field-hint">Generating a new token will invalidate the previous one. Update your identity provider after saving.</span>
             {saveResult && <div className={`admin-result ${saveResult.type}`}>{saveResult.type === 'success' ? <FiCheck /> : <FiAlertTriangle />}{saveResult.message}</div>}
           </div>
         </div>
       )}
 
       {/* ===================== SYSTEM TAB (normal only) ===================== */}
-      {tab === 'system' && !isProvisioning && (
-        <>
-        {adminSystemInfo && (
+      {tab === 'system' && !isProvisioning && adminSystemInfo && (
         <div className="admin-section-wrapper">
           <div className="admin-section-header">
             <div>
@@ -1113,7 +1122,7 @@ export default function AdminPanel() {
             <div className="admin-system-grid">
               <div className="admin-system-stat"><div className="stat-label">Uptime</div><div className="stat-value">{formatUptime(adminSystemInfo.uptime)}</div></div>
               <div className="admin-system-stat"><div className="stat-label">Node Version</div><div className="stat-value">{adminSystemInfo.nodeVersion}</div></div>
-              <div className="admin-system-stat"><div className="stat-label">Metadata Backend</div><div className="stat-value">{adminSystemInfo.metadataBackend}</div></div>
+              <div className="admin-system-stat"><div className="stat-label">Database</div><div className="stat-value">PostgreSQL (bundled)</div></div>
               <div className="admin-system-stat"><div className="stat-label">Active Sessions</div><div className="stat-value">{adminSystemInfo.activeSessions}</div></div>
               <div className="admin-system-stat"><div className="stat-label">Session Timeout</div><div className="stat-value">{adminSystemInfo.sessionTimeoutMinutes || 20} min (inactivity)</div></div>
               <div className="admin-system-stat"><div className="stat-label">Heap Used</div><div className="stat-value">{formatBytes(adminSystemInfo.memoryUsage?.heapUsed || 0)}</div></div>
@@ -1122,45 +1131,36 @@ export default function AdminPanel() {
             </div>
           </div>
         </div>
-        )}
+      )}
 
+      {tab === 'system' && !isProvisioning && (
         <div className="admin-section-wrapper">
           <div className="admin-section-header">
             <div>
-              <h2><FiServer /> Server Configuration</h2>
-              <p>URLs, CORS, and runtime settings. Changes take effect immediately.</p>
+              <h2><FiGlobe /> Application URL</h2>
+              <p>The public URL used for CORS, SAML redirects, and SCIM endpoints</p>
             </div>
           </div>
           <div className="admin-section-card">
             <div className="admin-field">
               <label>Frontend URL</label>
               <input value={editValues.FRONTEND_URL || ''} onChange={e => handleFieldChange('FRONTEND_URL', e.target.value)} placeholder="https://analytics.company.com" />
-              <span className="admin-field-hint">The URL users access the app from. Also used for WebAuthn, SAML redirects, and CORS.</span>
+              <span className="admin-field-hint">Auto-detected during setup. Update this if you migrate to a new domain or add a custom URL.</span>
             </div>
-            <div className="admin-field">
-              <label>CORS Origins</label>
-              <input value={editValues.CORS_ORIGINS || ''} onChange={e => handleFieldChange('CORS_ORIGINS', e.target.value)} placeholder="https://analytics.company.com" />
-              <span className="admin-field-hint">Comma-separated list of allowed origins for API requests</span>
+            <div className="admin-btn-row">
+              <button className="admin-btn admin-btn-secondary" onClick={() => { handleFieldChange('FRONTEND_URL', window.location.origin); handleFieldChange('CORS_ORIGINS', window.location.origin); }}>
+                <FiRefreshCw /> Detect from Browser
+              </button>
+              <button className="admin-btn admin-btn-primary" onClick={() => {
+                if (!editValues.CORS_ORIGINS || editValues.CORS_ORIGINS !== editValues.FRONTEND_URL) {
+                  handleFieldChange('CORS_ORIGINS', editValues.FRONTEND_URL);
+                }
+                handleSave('server');
+              }} disabled={adminLoading}><FiSave /> Save</button>
             </div>
-            <div className="admin-field-row">
-              <div className="admin-field">
-                <label>API Port</label>
-                <input value={editValues.PORT || '3001'} onChange={e => handleFieldChange('PORT', e.target.value)} placeholder="3001" />
-              </div>
-              <div className="admin-field">
-                <label>Rate Limit (requests / 15 min)</label>
-                <input type="number" value={editValues.RATE_LIMIT_MAX || '1000'} onChange={e => handleFieldChange('RATE_LIMIT_MAX', e.target.value)} />
-              </div>
-            </div>
-            <div className="admin-toggle-wrapper">
-              <label>Verbose Logging</label>
-              <input type="checkbox" className="admin-toggle" checked={editValues.VERBOSE_LOGS === 'true'} onChange={e => handleFieldChange('VERBOSE_LOGS', e.target.checked ? 'true' : 'false')} />
-            </div>
-            <div className="admin-btn-row"><button className="admin-btn admin-btn-primary" onClick={handleSave} disabled={adminLoading}><FiSave /> Save Changes</button></div>
             {saveResult && <div className={`admin-result ${saveResult.type}`}>{saveResult.type === 'success' ? <FiCheck /> : <FiAlertTriangle />}{saveResult.message}</div>}
           </div>
         </div>
-        </>
       )}
 
       {/* Error display */}
@@ -1169,51 +1169,28 @@ export default function AdminPanel() {
       )}
       </div>
 
-      {/* Rotation confirmation modal (normal mode) */}
+      {/* Rotation confirmation modal */}
       {confirmRotate && (
         <div className="admin-confirm-overlay" onClick={() => setConfirmRotate(null)}>
           <div className="admin-confirm-box" onClick={e => e.stopPropagation()}>
-            <h3><FiAlertTriangle /> Rotate {confirmRotate === 'jwt' ? 'JWT Secret' : 'Encryption Key'}?</h3>
+            <h3><FiAlertTriangle /> Rotate {confirmRotate === 'jwt' ? 'JWT Secret' : confirmRotate === 'encryption' ? 'Encryption Key' : 'Recovery Key'}?</h3>
             <p>
               {confirmRotate === 'jwt'
-                ? 'This will invalidate all active sessions. Every user will need to sign in again.'
-                : 'This will re-encrypt all stored Snowflake credentials with a new key.'}
+                ? 'This is irreversible. All active sessions will be invalidated and every user will need to sign in again.'
+                : confirmRotate === 'encryption'
+                ? 'This is irreversible. All stored connection credentials will be re-encrypted with a new key. Ensure the application is not under heavy load.'
+                : 'This is irreversible. All configuration and backup archives will be re-encrypted. A new recovery key file will be downloaded automatically. The previous recovery key will stop working.'}
             </p>
             <div className="admin-confirm-actions">
               <button className="admin-btn admin-btn-secondary" onClick={() => setConfirmRotate(null)}>Cancel</button>
-              <button className="admin-btn admin-btn-danger" onClick={() => handleRotate(confirmRotate)}><FiRefreshCw /> Rotate</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmMigrate && (
-        <div className="admin-confirm-overlay" onClick={() => setConfirmMigrate(false)}>
-          <div className="admin-confirm-box" onClick={e => e.stopPropagation()}>
-            <h3><FiDatabase /> Start Database Migration?</h3>
-            <p>
-              This will copy all data from the current database to <strong>{destDb}</strong> on <strong>{destHost}</strong>.
-              The current database will not be modified. The destination must be empty.
-            </p>
-            <div className="admin-confirm-actions">
-              <button className="admin-btn admin-btn-secondary" onClick={() => setConfirmMigrate(false)}>Cancel</button>
-              <button className="admin-btn admin-btn-primary" onClick={handleStartMigration}><FiPlay /> Start Migration</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmSwitch && (
-        <div className="admin-confirm-overlay" onClick={() => setConfirmSwitch(false)}>
-          <div className="admin-confirm-box" onClick={e => e.stopPropagation()}>
-            <h3><FiDatabase /> Switch to New Database?</h3>
-            <p>
-              The server will be reconfigured to use <strong>{destDb}</strong> on <strong>{destHost}</strong> as
-              the metadata backend. This takes effect immediately. Your old database is preserved as a backup.
-            </p>
-            <div className="admin-confirm-actions">
-              <button className="admin-btn admin-btn-secondary" onClick={() => setConfirmSwitch(false)}>Cancel</button>
-              <button className="admin-btn admin-btn-success" onClick={handleSwitchBackend}><FiCheck /> Switch Now</button>
+              <button className="admin-btn admin-btn-danger" onClick={async () => {
+                if (confirmRotate === 'recovery') {
+                  setConfirmRotate(null);
+                  await adminRotateMasterKey();
+                } else {
+                  handleRotate(confirmRotate);
+                }
+              }}><FiRefreshCw /> Rotate</button>
             </div>
           </div>
         </div>

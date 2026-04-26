@@ -11,6 +11,7 @@ import UserSettings from './views/UserSettings';
 import AskView from './views/AskView';
 import AdminPanel from './views/AdminPanel';
 import WorkspacesView from './views/WorkspacesView';
+import ConsumptionView from './views/ConsumptionView';
 import SignInModal from './components/SignInModal';
 import SessionWarningModal from './components/SessionWarningModal';
 import { startSessionMonitoring, stopSessionMonitoring, persistSession } from './api/apiClient';
@@ -101,6 +102,7 @@ const routeToView = {
   '/users': 'users',
   '/settings': 'settings',
   '/admin': 'admin',
+  '/consumption': 'consumption',
 };
 
 // Protected route wrapper - defined OUTSIDE App to prevent remounting children on re-render
@@ -323,6 +325,14 @@ function App() {
             element={
               <ProtectedRoute requiredRoles={['owner', 'bootstrap_admin']}>
                 <AdminPanel />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/consumption" 
+            element={
+              <ProtectedRoute requiredRoles={['owner', 'admin']}>
+                <ConsumptionView />
               </ProtectedRoute>
             } 
           />

@@ -378,66 +378,106 @@
   box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.15);
 }
 
-/* Agent tool steps */
-.ai-chat-tool-steps {
+/* ── Tool step rounds (grouped) ── */
+
+.ai-chat-tool-rounds {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin-bottom: 8px;
 }
 
-.ai-chat-tool-step {
-  background: rgba(167, 139, 250, 0.08);
-  border: 1px solid rgba(167, 139, 250, 0.15);
-  border-radius: 6px;
-  padding: 8px 10px;
+.ai-chat-tool-round {
+  background: rgba(167, 139, 250, 0.06);
+  border: 1px solid rgba(167, 139, 250, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
   font-size: 12px;
+  transition: border-color 0.2s;
 }
 
-.ai-chat-tool-step-header {
+.ai-chat-tool-round.active {
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.ai-chat-tool-round-header {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 7px 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.ai-chat-tool-round-header:hover {
+  background: rgba(167, 139, 250, 0.08);
 }
 
-.tool-step-icon {
+.tool-round-icon {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.tool-round-icon svg {
   width: 14px;
   height: 14px;
 }
+.tool-round-icon .tool-step-success { color: #34d399; }
+.tool-round-icon .tool-step-error { color: #f87171; }
 
-.tool-step-icon.tool-step-success {
-  color: #34d399;
-}
-
-.tool-step-icon.tool-step-error {
-  color: #f87171;
-}
-
-.tool-step-name {
+.tool-round-label {
+  flex: 1;
   font-weight: 500;
   color: #c4b5fd;
-  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.tool-step-time {
+.tool-round-expand {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
   color: #6b7280;
-  font-size: 11px;
+  transition: transform 0.2s;
+}
+.tool-round-expand.expanded {
+  transform: rotate(90deg);
 }
 
-.ai-chat-tool-step-thinking {
-  color: #9ca3af;
+.ai-chat-tool-round-details {
+  border-top: 1px solid rgba(167, 139, 250, 0.1);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-chat-tool-step-compact {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 11px;
-  margin-top: 4px;
-  font-style: italic;
   line-height: 1.4;
 }
 
-.ai-chat-tool-step-result {
+.tool-step-name-compact {
+  font-weight: 500;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.tool-step-result-compact {
   color: #d1d5db;
-  font-size: 11px;
-  margin-top: 4px;
-  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-step-error-text {

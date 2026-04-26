@@ -1,5 +1,5 @@
 import { buildQueryDirect } from '../utils/queryBuilder.js';
-import dashboardAiService from './dashboardAiService.js';
+import dashboardAiService from './dashboardAi/index.js';
 
 export function buildSqlForWidget(widget) {
   const semanticViewFQN =
@@ -61,17 +61,17 @@ async function executeWidgetQueries(connection, widgets) {
   return results;
 }
 
-export async function generateAndExecuteWidget(connection, { prompt, metadata, model }) {
+export async function generateAndExecuteWidget(connection, { prompt, metadata, model, provider, apiKey, endpointUrl, connWithCreds }) {
   const widget = await dashboardAiService.generateWidget(connection, {
-    prompt, semanticViewMetadata: metadata, model, maxTokens: 2048,
+    prompt, semanticViewMetadata: metadata, model, maxTokens: 2048, provider, apiKey, endpointUrl, connWithCreds,
   });
   const widgets = await executeWidgetQueries(connection, [widget]);
   return { message: widget.title || 'Here are your results.', widgets };
 }
 
-export async function generateAndExecuteDashboard(connection, { prompt, metadata, model }) {
+export async function generateAndExecuteDashboard(connection, { prompt, metadata, model, provider, apiKey, endpointUrl, connWithCreds }) {
   const dashboard = await dashboardAiService.generateDashboard(connection, {
-    prompt, semanticViewMetadata: metadata, model, maxTokens: 4096,
+    prompt, semanticViewMetadata: metadata, model, maxTokens: 4096, provider, apiKey, endpointUrl, connWithCreds,
   });
   const allWidgets = [];
   for (const tab of dashboard.tabs || []) allWidgets.push(...(tab.widgets || []));
@@ -86,9 +86,9 @@ export async function generateAndExecuteDashboard(connection, { prompt, metadata
   };
 }
 
-export async function agenticChat(connection, { messages, metadata, model }) {
+export async function agenticChat(connection, { messages, metadata, model, provider, apiKey, endpointUrl, connWithCreds }) {
   const result = await dashboardAiService.chatWithDashboard(connection, {
-    messages, currentYaml: null, focusedWidgetId: null, semanticViewMetadata: metadata, model, maxTokens: 4096,
+    messages, currentYaml: null, focusedWidgetId: null, semanticViewMetadata: metadata, model, maxTokens: 4096, provider, apiKey, endpointUrl, connWithCreds,
   });
 
   if (result.action === 'add_widget' || result.action === 'replace_dashboard') {
@@ -99,13 +99,13 @@ export async function agenticChat(connection, { messages, metadata, model }) {
   return { message: result.message, action: result.action, widgets: [], toolSteps: result.toolSteps };
 }
 
-export async function conversationalAnswer(connection, { messages, metadata, model }) {
+export async function conversationalAnswer(connection, { messages, metadata, model, provider, apiKey, endpointUrl, connWithCreds }) {
   return dashboardAiService.conversationalAnswer(connection, {
-    messages, semanticViewMetadata: metadata, model, maxTokens: 4096,
+    messages, semanticViewMetadata: metadata, model, maxTokens: 4096, provider, apiKey, endpointUrl, connWithCreds,
   });
 }
 
-export async function askChatAndExecute(connection, { messages, metadata, priorArtifacts, model, onToolStep }) {
+export async function askChatAndExecute(connection, { messages, metadata, priorArtifacts, model, onToolStep, onTextDelta, provider, apiKey, endpointUrl, connWithCreds }) {
   const result = await dashboardAiService.askChat(connection, {
     messages,
     semanticViewMetadata: metadata,
@@ -113,6 +113,11 @@ export async function askChatAndExecute(connection, { messages, metadata, priorA
     model,
     maxTokens: 4096,
     onToolStep,
+    onTextDelta,
+    provider,
+    apiKey,
+    endpointUrl,
+    connWithCreds,
   });
 
   if (result.action === 'add_widget' && result.yaml) {
@@ -153,8 +158,8 @@ export async function askChatAndExecute(connection, { messages, metadata, priorA
   return { message: result.message, action: result.action || 'none', widgets: [], toolSteps: result.toolSteps };
 }
 
-export async function classifyIntent(connection, { message, hasHistory }) {
-  return dashboardAiService.classifyIntent(connection, { message, hasHistory });
+export async function classifyIntent(connection, { message, hasHistory, provider, apiKey, endpointUrl, connWithCreds }) {
+  return dashboardAiService.classifyIntent(connection, { message, hasHistory, provider, apiKey, endpointUrl, connWithCreds });
 }
 
 export default { buildSqlForWidget, generateAndExecuteWidget, generateAndExecuteDashboard, agenticChat, conversationalAnswer, askChatAndExecute, classifyIntent };

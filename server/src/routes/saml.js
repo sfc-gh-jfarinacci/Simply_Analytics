@@ -5,9 +5,8 @@ import samlService from '../services/samlService.js';
 import userService from '../services/userService.js';
 import { getServerInstanceId, revokeSession } from './auth.js';
 import configStore from '../config/configStore.js';
+import { getJwtSecret, getJwtExpiry } from '../middleware/auth.js';
 
-function getJwtSecret() { return configStore.get('JWT_SECRET') || process.env.JWT_SECRET || 'simply-analytics-secret-change-in-production'; }
-function getJwtExpiry() { return configStore.get('JWT_EXPIRY') || process.env.JWT_EXPIRY || '8h'; }
 function getFrontendUrl() { return configStore.get('FRONTEND_URL') || process.env.FRONTEND_URL || 'http://localhost:5173'; }
 
 export const samlRoutes = Router();

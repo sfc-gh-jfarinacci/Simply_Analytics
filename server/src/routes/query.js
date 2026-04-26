@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getConnection, executeQuery, getSampleData } from '../db/dashboardSessionManager.js';
+import { trackEvent } from '../services/eventTracker.js';
 
 export const queryRoutes = Router();
 
@@ -14,8 +15,14 @@ queryRoutes.post('/execute', async (req, res, next) => {
     }
 
     const startTime = Date.now();
-    const result = await executeQuery(connection, sql, binds);
+    const result = await executeQuery(connection, sql, binds, { interactive: true });
     const executionTime = Date.now() - startTime;
+
+    trackEvent('query.execute', {
+      userId: req.user?.id,
+      metadata: { executionTime, requestType: 'query' },
+      ip: req.ip,
+    });
 
     res.json({
       ...result,
@@ -59,8 +66,7 @@ queryRoutes.post('/build', async (req, res, next) => {
       return res.status(404).json({ error: 'Connection not found' });
     }
 
-    // Build SQL from semantic model
-    const sql = buildQueryFromModel({
+    const { sql, binds: queryBinds } = buildQueryFromModel({
       model,
       dimensions,
       measures,
@@ -70,7 +76,7 @@ queryRoutes.post('/build', async (req, res, next) => {
     });
 
     const startTime = Date.now();
-    const result = await executeQuery(connection, sql);
+    const result = await executeQuery(connection, sql, queryBinds, { interactive: true });
     const executionTime = Date.now() - startTime;
 
     res.json({
@@ -84,13 +90,14 @@ queryRoutes.post('/build', async (req, res, next) => {
 });
 
 /**
- * Build SQL query from semantic model definition
+ * Build SQL query from semantic model definition.
+ * Returns { sql, binds } with parameterized filter values.
  */
 function buildQueryFromModel({ model, dimensions = [], measures = [], filters = [], orderBy = [], limit }) {
   const selectParts = [];
   const groupByParts = [];
+  const binds = [];
 
-  // Add dimensions
   dimensions.forEach((dim) => {
     const dimDef = model.dimensions.find((d) => d.name === dim);
     if (dimDef) {
@@ -99,7 +106,6 @@ function buildQueryFromModel({ model, dimensions = [], measures = [], filters = 
     }
   });
 
-  // Add measures
   measures.forEach((measure) => {
     const measureDef = model.measures.find((m) => m.name === measure);
     if (measureDef) {
@@ -107,49 +113,58 @@ function buildQueryFromModel({ model, dimensions = [], measures = [], filters = 
     }
   });
 
-  // Build WHERE clause
   let whereClause = '';
   if (filters.length > 0) {
     const filterConditions = filters.map((f) => {
       const field = model.dimensions.find((d) => d.name === f.field) ||
                    model.measures.find((m) => m.name === f.field);
       if (!field) return null;
-      
+
       switch (f.operator) {
         case 'equals':
-          return `${field.sql} = '${f.value}'`;
+          binds.push(f.value);
+          return `${field.sql} = ?`;
         case 'not_equals':
-          return `${field.sql} != '${f.value}'`;
+          binds.push(f.value);
+          return `${field.sql} != ?`;
         case 'contains':
-          return `${field.sql} LIKE '%${f.value}%'`;
+          binds.push(`%${f.value}%`);
+          return `${field.sql} LIKE ?`;
         case 'greater_than':
-          return `${field.sql} > ${f.value}`;
+          binds.push(Number(f.value));
+          return `${field.sql} > ?`;
         case 'less_than':
-          return `${field.sql} < ${f.value}`;
-        case 'between':
-          return `${field.sql} BETWEEN '${f.value[0]}' AND '${f.value[1]}'`;
-        case 'in':
-          return `${field.sql} IN (${f.value.map((v) => `'${v}'`).join(', ')})`;
+          binds.push(Number(f.value));
+          return `${field.sql} < ?`;
+        case 'between': {
+          binds.push(f.value[0], f.value[1]);
+          return `${field.sql} BETWEEN ? AND ?`;
+        }
+        case 'in': {
+          const placeholders = f.value.map((v) => { binds.push(v); return '?'; });
+          return `${field.sql} IN (${placeholders.join(', ')})`;
+        }
         default:
           return null;
       }
     }).filter(Boolean);
-    
+
     if (filterConditions.length > 0) {
       whereClause = `WHERE ${filterConditions.join(' AND ')}`;
     }
   }
 
-  // Build ORDER BY clause
+  const validDirections = new Set(['ASC', 'DESC']);
   let orderByClause = '';
   if (orderBy.length > 0) {
-    orderByClause = `ORDER BY ${orderBy.map((o) => `"${o.field}" ${o.direction || 'ASC'}`).join(', ')}`;
+    orderByClause = `ORDER BY ${orderBy.map((o) => {
+      const dir = validDirections.has((o.direction || '').toUpperCase()) ? o.direction.toUpperCase() : 'ASC';
+      return `"${o.field}" ${dir}`;
+    }).join(', ')}`;
   }
 
-  // Build LIMIT clause
-  const limitClause = limit ? `LIMIT ${limit}` : '';
+  const limitClause = limit ? `LIMIT ${parseInt(limit, 10) || 1000}` : '';
 
-  // Construct final SQL
   const sql = `
 SELECT ${selectParts.join(', ')}
 FROM ${model.table}
@@ -159,6 +174,6 @@ ${orderByClause}
 ${limitClause}
   `.trim();
 
-  return sql;
+  return { sql, binds };
 }
 

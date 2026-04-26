@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiDatabase, FiX, FiAlertCircle, FiRefreshCw, FiCheck, FiLayers, FiCpu } from 'react-icons/fi';
+import { FiDatabase, FiX, FiAlertCircle, FiRefreshCw, FiCheck, FiLayers } from 'react-icons/fi';
 
 export function ReplaceConnectionModal({
   dashboard,
@@ -36,7 +36,7 @@ export function ReplaceConnectionModal({
         </div>
         <div className="modal-body">
           <p className="replace-warning">
-            <FiAlertCircle /> The new connection must have the same semantic views and agents assigned to it in this workspace.
+            <FiAlertCircle /> The new connection must have the same semantic views assigned to it in this workspace.
           </p>
 
           {error && (
@@ -74,11 +74,9 @@ export function ReplaceConnectionModal({
                         <span className="connection-account">
                           {[wc.connection_account, wc.role, wc.warehouse].filter(Boolean).join(' · ')}
                         </span>
-                        {(wc.views?.length > 0 || wc.agents?.length > 0) && (
+                        {wc.views?.length > 0 && (
                           <span className="connection-resources">
-                            {wc.views?.length > 0 && <><FiLayers size={11} /> {wc.views.length} view{wc.views.length !== 1 ? 's' : ''}</>}
-                            {wc.views?.length > 0 && wc.agents?.length > 0 && ' · '}
-                            {wc.agents?.length > 0 && <><FiCpu size={11} /> {wc.agents.length} agent{wc.agents.length !== 1 ? 's' : ''}</>}
+                            <FiLayers size={11} /> {wc.views.length} view{wc.views.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </div>

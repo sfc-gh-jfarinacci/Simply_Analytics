@@ -15,9 +15,9 @@
 
 import { Router } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import { getCachedDashboardConnection } from '../services/connectionService.js';
+import { getCachedDashboardConnection, getConnectionWithCredentialsForDashboard } from '../services/connectionService.js';
 import { executeQuery } from '../db/dashboardSessionManager.js';
+import { complete as llmComplete } from '../services/llmProvider.js';
 import {
   buildQueryDirect,
   isDatePartField,
@@ -33,6 +33,14 @@ const DEBUG = process.env.SEMANTIC_DEBUG === 'true' || process.env.VERBOSE_LOGS 
 const debugLog = (...args) => DEBUG && console.log(...args);
 
 export const semanticRoutes = Router();
+
+async function resolveConnWithCredsFromReq(req) {
+  const connectionId = req.body?.connectionId || req.query?.connectionId;
+  if (!connectionId) return null;
+  try {
+    return await getConnectionWithCredentialsForDashboard(connectionId);
+  } catch { return null; }
+}
 
 /**
  * Helper to get cached Snowflake connection from connectionId
@@ -1261,73 +1269,49 @@ function escapeString(str) {
  */
 semanticRoutes.post('/cortex/complete', async (req, res) => {
   try {
-    if (!req.snowflakeConnection) {
-      return res.status(401).json({ error: 'Authentication required', code: 'NO_CONNECTION' });
-    }
-
     const { 
       prompt, 
-      model = 'llama3.1-70b',  // Default model
+      model = 'claude-sonnet-4-6',
       temperature = 0.7,
       maxTokens = 1024,
-      systemPrompt = null
+      systemPrompt = null,
+      provider: reqProvider,
+      apiKey: reqApiKey,
+      endpointUrl: reqEndpointUrl,
     } = req.body;
+
+    const provider = reqProvider || 'cortex';
+
+    if (provider === 'cortex' && !req.snowflakeConnection) {
+      return res.status(401).json({ error: 'Authentication required', code: 'NO_CONNECTION' });
+    }
 
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    // Build the CORTEX.COMPLETE call
-    // Format: SNOWFLAKE.CORTEX.COMPLETE(model, prompt) or with options
-    let sql;
-    if (systemPrompt) {
-      sql = `
-        SELECT SNOWFLAKE.CORTEX.COMPLETE(
-          '${model}',
-          [
-            {'role': 'system', 'content': '${escapeString(systemPrompt)}'},
-            {'role': 'user', 'content': '${escapeString(prompt)}'}
-          ],
-          {'temperature': ${temperature}, 'max_tokens': ${maxTokens}}
-        ) as response
-      `;
-    } else {
-      sql = `
-        SELECT SNOWFLAKE.CORTEX.COMPLETE(
-          '${model}',
-          '${escapeString(prompt)}',
-          {'temperature': ${temperature}, 'max_tokens': ${maxTokens}}
-        ) as response
-      `;
-    }
+    const messages = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: prompt });
 
-    debugLog('Executing Cortex COMPLETE:', sql);
+    const connWithCreds = await resolveConnWithCredsFromReq(req);
+
     const startTime = Date.now();
-    const result = await executeUserQuery(req.snowflakeConnection, sql);
+    const response = await llmComplete({
+      messages, model, maxTokens, temperature,
+      provider, apiKey: reqApiKey, connWithCreds,
+      endpointUrl: reqEndpointUrl,
+    });
     const executionTime = Date.now() - startTime;
 
-    // Parse the response - extract text from Cortex JSON structure
-    let response = result[0]?.RESPONSE || result[0]?.response;
-    
-    // Cortex COMPLETE returns JSON like: {"choices":[{"messages":"text"}]} for chat format
-    if (response && typeof response === 'object') {
-      if (response.choices && response.choices[0]) {
-        response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-      } else if (response.content) {
-        response = response.content;
-      } else if (response.message) {
-        response = response.message;
-      }
-    }
-    
     res.json({
       response: typeof response === 'string' ? response : JSON.stringify(response),
       model,
       executionTime,
     });
   } catch (error) {
-    console.error('Cortex COMPLETE error:', error);
-    res.status(500).json({ error: error.message || 'Cortex COMPLETE failed' });
+    console.error('LLM COMPLETE error:', error);
+    res.status(500).json({ error: error.message || 'LLM COMPLETE failed' });
   }
 });
 
@@ -1338,22 +1322,26 @@ semanticRoutes.post('/cortex/complete', async (req, res) => {
  */
 semanticRoutes.post('/cortex/ask', async (req, res) => {
   try {
-    if (!req.snowflakeConnection) {
-      return res.status(401).json({ error: 'Authentication required', code: 'NO_CONNECTION' });
-    }
-
     const { 
       question,
       semanticView,
-      semanticViewSchema,  // { dimensions: [...], measures: [...] }
-      model = 'llama3.1-70b'
+      semanticViewSchema,
+      model = 'claude-sonnet-4-6',
+      provider: reqProvider,
+      apiKey: reqApiKey,
+      endpointUrl: reqEndpointUrl,
     } = req.body;
+
+    const provider = reqProvider || 'cortex';
+
+    if (provider === 'cortex' && !req.snowflakeConnection) {
+      return res.status(401).json({ error: 'Authentication required', code: 'NO_CONNECTION' });
+    }
 
     if (!question || !semanticView) {
       return res.status(400).json({ error: 'Question and semanticView are required' });
     }
 
-    // Build a prompt that instructs the LLM to generate a semantic query
     const systemPrompt = `You are a SQL query generator for Snowflake Semantic Views.
 Given a natural language question, generate the appropriate query parameters for the SEMANTIC_VIEW function.
 
@@ -1376,30 +1364,23 @@ Respond with ONLY a valid JSON object in this exact format:
 Only include fields that are relevant to the question. Use valid operator values: =, !=, <, >, <=, >=, IN, LIKE, IS NULL, IS NOT NULL.
 Do not include any other text, markdown, or code blocks - just the raw JSON.`;
 
-    const sql = `
-      SELECT SNOWFLAKE.CORTEX.COMPLETE(
-        '${model}',
-        [
-          {'role': 'system', 'content': '${escapeString(systemPrompt)}'},
-          {'role': 'user', 'content': '${escapeString(question)}'}
-        ],
-        {'temperature': 0.3, 'max_tokens': 1024}
-      ) as response
-    `;
+    const connWithCreds = await resolveConnWithCredsFromReq(req);
 
-    debugLog('Executing Cortex ASK for semantic view query generation');
     const startTime = Date.now();
-    const result = await executeUserQuery(req.snowflakeConnection, sql);
+    const responseText = await llmComplete({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: question },
+      ],
+      model, maxTokens: 1024, temperature: 0.3,
+      provider, apiKey: reqApiKey, connWithCreds,
+      endpointUrl: reqEndpointUrl,
+    });
     const executionTime = Date.now() - startTime;
 
-    const responseText = result[0]?.RESPONSE || result[0]?.response;
-    
-    // Try to parse the JSON response
     let queryParams;
     try {
-      // Handle both string and object responses
       const textToParse = typeof responseText === 'string' ? responseText : JSON.stringify(responseText);
-      // Extract JSON from potential markdown code blocks
       const jsonMatch = textToParse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         queryParams = JSON.parse(jsonMatch[0]);
@@ -1407,7 +1388,7 @@ Do not include any other text, markdown, or code blocks - just the raw JSON.`;
         throw new Error('No JSON found in response');
       }
     } catch (parseError) {
-      console.error('Failed to parse Cortex response:', responseText);
+      console.error('Failed to parse AI response:', responseText);
       return res.json({
         success: false,
         error: 'Could not parse AI response into query parameters',
@@ -1437,20 +1418,23 @@ semanticRoutes.post('/cortex/insights', async (req, res) => {
   
   try {
     const { 
-      data,  // Query result data
-      query, // The query that produced the data
+      data,
+      query,
       semanticView,
-      model = 'llama3.1-70b',
+      model = 'claude-sonnet-4-6',
       connectionId,
-      role,      // Dashboard-specific role override
-      warehouse  // Dashboard-specific warehouse override
+      role,
+      warehouse,
+      provider: reqProvider,
+      apiKey: reqApiKey,
+      endpointUrl: reqEndpointUrl,
     } = req.body;
+
+    const provider = reqProvider || 'cortex';
 
     let connection = req.snowflakeConnection;
     
-    // If connectionId provided, use stored connection
-    // Pass dashboard-specific role/warehouse to switch if needed
-    if (connectionId && req.user) {
+    if (provider === 'cortex' && connectionId && req.user) {
       try {
         tempConnection = await getSnowflakeConnectionFromId(
           connectionId, 
@@ -1467,7 +1451,7 @@ semanticRoutes.post('/cortex/insights', async (req, res) => {
       }
     }
     
-    if (!connection) {
+    if (provider === 'cortex' && !connection) {
       return res.status(401).json({ error: 'Authentication required', code: 'NO_CONNECTION' });
     }
 
@@ -1475,7 +1459,6 @@ semanticRoutes.post('/cortex/insights', async (req, res) => {
       return res.status(400).json({ error: 'Data is required for insights' });
     }
 
-    // Limit data to first 50 rows for prompt size
     const sampleData = data.slice(0, 50);
     const dataPreview = JSON.stringify(sampleData, null, 2);
 
@@ -1491,43 +1474,19 @@ Provide insights in this format:
 
 Be concise and focus on business-relevant observations.`;
 
-    const sql = `
-      SELECT SNOWFLAKE.CORTEX.COMPLETE(
-        '${model}',
-        [
-          {'role': 'system', 'content': '${escapeString(systemPrompt)}'},
-          {'role': 'user', 'content': 'Analyze this data:\\n${escapeString(dataPreview)}'}
-        ],
-        {'temperature': 0.5, 'max_tokens': 1024}
-      ) as response
-    `;
+    const connWithCreds = await resolveConnWithCredsFromReq(req);
 
-    debugLog('Executing Cortex INSIGHTS generation');
     const startTime = Date.now();
-    // Use executeQuery for temp connections, executeUserQuery for session connections
-    const result = tempConnection 
-      ? (await executeQuery(tempConnection, sql)).rows
-      : await executeUserQuery(connection, sql);
+    const response = await llmComplete({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Analyze this data:\n${dataPreview}` },
+      ],
+      model, maxTokens: 1024, temperature: 0.5,
+      provider, apiKey: reqApiKey, connWithCreds,
+      endpointUrl: reqEndpointUrl,
+    });
     const executionTime = Date.now() - startTime;
-
-    let response = result[0]?.RESPONSE || result[0]?.response;
-    
-    // Extract text content from Cortex response
-    // Cortex COMPLETE returns JSON like: {"choices":[{"messages":"text content"}]}
-    if (response && typeof response === 'object') {
-      if (response.choices && response.choices[0]) {
-        response = response.choices[0].messages || response.choices[0].message?.content || response.choices[0].text;
-      } else if (response.content) {
-        response = response.content;
-      } else if (response.message) {
-        response = response.message;
-      }
-    }
-    
-    // If still an object, stringify it
-    if (typeof response === 'object') {
-      response = JSON.stringify(response);
-    }
 
     res.json({
       insights: response,
@@ -1538,7 +1497,6 @@ Be concise and focus on business-relevant observations.`;
     console.error('Cortex INSIGHTS error:', error);
     res.status(500).json({ error: error.message || 'Cortex INSIGHTS failed' });
   }
-  // Note: Don't destroy cached connections - they are reused
 });
 
 /**
@@ -1664,170 +1622,6 @@ semanticRoutes.get('/cortex/models', async (req, res) => {
   } catch (error) {
     console.error('Error listing Cortex models:', error);
     res.status(500).json({ error: error.message });
-  }
-});
-
-// ============================================================================
-// CORTEX AGENT CHAT (Streaming SSE proxy)
-// ============================================================================
-
-/**
- * POST /api/v1/semantic/cortex/agent/run
- * Proxy to Snowflake Cortex Agent :run API with SSE streaming.
- * Uses the dashboard's stored connection credentials to authenticate.
- *
- * Body: {
- *   connectionId: "uuid",
- *   agentFqn: "DB.SCHEMA.AGENT_NAME",
- *   messages: [{ role: "user", content: [{ type: "text", text: "..." }] }],
- *   threadId?: number,
- *   parentMessageId?: number,
- * }
- */
-semanticRoutes.post('/cortex/agent/run', async (req, res) => {
-  try {
-    const {
-      connectionId,
-      agentFqn,
-      messages,
-      threadId,
-      parentMessageId,
-      role,
-    } = req.body;
-
-    if (!connectionId || !agentFqn || !messages) {
-      return res.status(400).json({ error: 'connectionId, agentFqn, and messages are required' });
-    }
-
-    // Parse FQN into database, schema, name
-    const parts = agentFqn.split('.');
-    if (parts.length !== 3) {
-      return res.status(400).json({ error: 'agentFqn must be DATABASE.SCHEMA.AGENT_NAME' });
-    }
-    const [database, schema, agentName] = parts;
-
-    // Get connection credentials
-    const { getConnectionWithCredentialsForDashboard } = await import('../services/connectionService.js');
-    const connWithCreds = await getConnectionWithCredentialsForDashboard(connectionId);
-    if (!connWithCreds) {
-      return res.status(404).json({ error: 'Connection not found' });
-    }
-
-    // Build Snowflake REST API URL
-    const account = connWithCreds.account.replace(/\.snowflakecomputing\.com\/?$/, '');
-    const agentUrl = `https://${account}.snowflakecomputing.com/api/v2/databases/${encodeURIComponent(database)}/schemas/${encodeURIComponent(schema)}/agents/${encodeURIComponent(agentName)}:run`;
-
-    // Build auth headers – supports PAT and key-pair, all server-side
-    const sfHeaders = {
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
-    };
-
-    if (connWithCreds.auth_type === 'pat') {
-      sfHeaders['Authorization'] = `Bearer ${connWithCreds.credentials.token}`;
-      sfHeaders['X-Snowflake-Authorization-Token-Type'] = 'PROGRAMMATIC_ACCESS_TOKEN';
-    } else {
-      // Key-pair auth: generate a short-lived JWT signed with the user's private key
-      const qualifiedAccount = account.toUpperCase();
-      const qualifiedUser = connWithCreds.username.toUpperCase();
-
-      // Decode private key and derive the public key fingerprint
-      const privateKeyObj = crypto.createPrivateKey({
-        key: connWithCreds.credentials.privateKey,
-        format: 'pem',
-        passphrase: connWithCreds.credentials.passphrase || undefined,
-      });
-      const publicKeyDer = crypto.createPublicKey(privateKeyObj)
-        .export({ type: 'spki', format: 'der' });
-      const fingerprint = crypto.createHash('sha256').update(publicKeyDer).digest('base64');
-
-      const now = Math.floor(Date.now() / 1000);
-      const keypairJwt = jwt.sign(
-        {
-          iss: `${qualifiedAccount}.${qualifiedUser}.SHA256:${fingerprint}`,
-          sub: `${qualifiedAccount}.${qualifiedUser}`,
-          iat: now,
-          exp: now + 3600,
-        },
-        { key: connWithCreds.credentials.privateKey, passphrase: connWithCreds.credentials.passphrase || undefined },
-        { algorithm: 'RS256' },
-      );
-
-      sfHeaders['Authorization'] = `Bearer ${keypairJwt}`;
-      sfHeaders['X-Snowflake-Authorization-Token-Type'] = 'KEYPAIR_JWT';
-    }
-
-    // Use the dashboard's configured role (or the connection's default role)
-    const effectiveRole = role || connWithCreds.default_role;
-    if (effectiveRole) {
-      sfHeaders['X-Snowflake-Role'] = effectiveRole;
-    }
-
-    // Build request body
-    const agentBody = {
-      messages,
-      stream: true,
-    };
-    if (threadId != null) {
-      agentBody.thread_id = threadId;
-      agentBody.parent_message_id = parentMessageId ?? 0;
-    }
-
-    // Set up SSE headers for streaming to client
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
-    // Proxy the request to Snowflake
-    const sfResponse = await fetch(agentUrl, {
-      method: 'POST',
-      headers: sfHeaders,
-      body: JSON.stringify(agentBody),
-    });
-
-    if (!sfResponse.ok) {
-      const errText = await sfResponse.text();
-      res.write(`event: error\ndata: ${JSON.stringify({ error: errText || `Snowflake returned ${sfResponse.status}` })}\n\n`);
-      res.end();
-      return;
-    }
-
-    // Pipe the SSE stream from Snowflake through to the client
-    const reader = sfResponse.body.getReader();
-    const decoder = new TextDecoder();
-
-    const pump = async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          res.write(chunk);
-        }
-      } catch (streamErr) {
-        console.error('Cortex Agent stream error:', streamErr.message);
-        res.write(`event: error\ndata: ${JSON.stringify({ error: streamErr.message })}\n\n`);
-      } finally {
-        res.end();
-      }
-    };
-
-    // Handle client disconnect
-    req.on('close', () => {
-      try { reader.cancel(); } catch {}
-    });
-
-    await pump();
-  } catch (error) {
-    console.error('Cortex Agent run error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message || 'Cortex Agent run failed' });
-    } else {
-      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
-      res.end();
-    }
   }
 });
 

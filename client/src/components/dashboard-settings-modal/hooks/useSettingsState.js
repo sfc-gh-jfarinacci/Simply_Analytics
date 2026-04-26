@@ -16,7 +16,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
   const [availableWarehouses, setAvailableWarehouses] = useState([]);
   const [availableRoles, setAvailableRoles] = useState([]);
   const [availableSemanticViews, setAvailableSemanticViews] = useState([]);
-  const [availableCortexAgents, setAvailableCortexAgents] = useState([]);
   const [loadingResources, setLoadingResources] = useState(false);
 
   // Settings state
@@ -29,11 +28,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
   // Semantic views referenced
   const [semanticViewsReferenced, setSemanticViewsReferenced] = useState(dashboard?.semanticViewsReferenced || []);
   const [selectedSemanticView, setSelectedSemanticView] = useState('');
-
-  // Cortex agents
-  const [cortexAgentsEnabled, setCortexAgentsEnabled] = useState(dashboard?.cortexAgentsEnabled || false);
-  const [cortexAgents, setCortexAgents] = useState(dashboard?.cortexAgents || []);
-  const [selectedCortexAgent, setSelectedCortexAgent] = useState('');
 
   // Folder state
   const [folderId, setFolderId] = useState(dashboard?.folder_id || null);
@@ -97,19 +91,14 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
       setRole(dashboard.role || '');
       setIsPublished(dashboard.isPublished || false);
       setSemanticViewsReferenced(dashboard.semanticViewsReferenced ? [...dashboard.semanticViewsReferenced] : []);
-      setCortexAgentsEnabled(dashboard.cortexAgentsEnabled || false);
-      setCortexAgents(dashboard.cortexAgents ? [...dashboard.cortexAgents] : []);
       setFolderId(dashboard.folder_id || null);
 
-      // Also cache original values for cancel/revert
       originalValuesRef.current = {
         name: dashboard.name || '',
         description: dashboard.description || '',
         warehouse: dashboard.warehouse || '',
         isPublished: dashboard.isPublished || false,
         semanticViewsReferenced: dashboard.semanticViewsReferenced ? [...dashboard.semanticViewsReferenced] : [],
-        cortexAgentsEnabled: dashboard.cortexAgentsEnabled || false,
-        cortexAgents: dashboard.cortexAgents ? [...dashboard.cortexAgents] : [],
         folderId: dashboard.folder_id || null,
       };
     }
@@ -125,14 +114,11 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
       setWarehouse(originalValuesRef.current.warehouse);
       setIsPublished(originalValuesRef.current.isPublished);
       setSemanticViewsReferenced([...originalValuesRef.current.semanticViewsReferenced]);
-      setCortexAgentsEnabled(originalValuesRef.current.cortexAgentsEnabled);
-      setCortexAgents([...originalValuesRef.current.cortexAgents]);
       setFolderId(originalValuesRef.current.folderId);
     }
     // Clear temporary states
     setError(null);
     setSelectedSemanticView('');
-    setSelectedCortexAgent('');
     setShowTransferConfirm(false);
     setTransferOwnerTo('');
     setShowCredentialUpdate(false);
@@ -183,7 +169,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
 
       const wsId = activeWorkspace?.id || dashboard?.workspace_id;
       if (wsId) {
-        // Workspace mode: role, warehouse, views, agents all come from workspace connection
         const wsDetail = await workspaceApi.get(wsId);
         const wsConnections = wsDetail?.connections || [];
         const wsConn = wsConnections.find(wc => wc.connection_id === dashboard.connection_id);
@@ -197,20 +182,12 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
               .filter(v => v.workspace_connection_id === wsConn.id)
               .map(v => parseFqn(v.semantic_view_fqn))
           );
-          setAvailableCortexAgents(
-            (wsDetail?.agents || [])
-              .filter(a => a.workspace_connection_id === wsConn.id)
-              .map(a => parseFqn(a.agent_fqn))
-          );
         } else {
           setAvailableSemanticViews([]);
-          setAvailableCortexAgents([]);
         }
       } else if (dashboard.role) {
-        // No workspace — semantic views/agents from Snowflake, role/warehouse stay as-is from dashboard
         const resources = await sfConnectionApi.getResources(dashboard.connection_id, dashboard.role);
         setAvailableSemanticViews(resources.semanticViews || []);
-        setAvailableCortexAgents(resources.cortexAgents || []);
       }
     } catch (err) {
       console.error('Failed to load resources:', err);
@@ -234,8 +211,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
       setRole(dashboard.role || '');
       setIsPublished(dashboard.isPublished || false);
       setSemanticViewsReferenced(dashboard.semanticViewsReferenced || []);
-      setCortexAgentsEnabled(dashboard.cortexAgentsEnabled || false);
-      setCortexAgents(dashboard.cortexAgents || []);
       setFolderId(dashboard.folder_id || null);
     }
   }, [dashboard]);
@@ -320,35 +295,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
     setErrorViewName(null);
   };
 
-  // Add cortex agent to list (keyed by FQN)
-  const addCortexAgent = () => {
-    if (!selectedCortexAgent) return;
-
-    const agentObj = availableCortexAgents.find((a) => a.fullyQualifiedName === selectedCortexAgent);
-    if (!agentObj) return;
-
-    const fqn = agentObj.fullyQualifiedName;
-    if (cortexAgents.some((a) => (typeof a === 'object' ? a.fullyQualifiedName : a) === fqn)) {
-      return;
-    }
-
-    setCortexAgents([
-      ...cortexAgents,
-      {
-        name: agentObj.name,
-        database: agentObj.database,
-        schema: agentObj.schema,
-        fullyQualifiedName: fqn,
-      },
-    ]);
-    setSelectedCortexAgent('');
-  };
-
-  // Remove cortex agent from list (by FQN)
-  const removeCortexAgent = (fqn) => {
-    setCortexAgents(cortexAgents.filter((a) => (typeof a === 'object' ? a.fullyQualifiedName : a) !== fqn));
-  };
-
   // Test connection using the dashboard's stored connection
   const testConnection = async () => {
     if (!dashboard?.connection_id) {
@@ -388,13 +334,10 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
       const wsDetail = await workspaceApi.get(wsId);
       const wsConnections = wsDetail?.connections || [];
       const wsViews = wsDetail?.semanticViews || [];
-      const wsAgents = wsDetail?.agents || [];
 
-      // Enrich each connection with its assigned views/agents for compatibility checking
       const enriched = wsConnections.map(wc => ({
         ...wc,
         views: wsViews.filter(v => v.workspace_connection_id === wc.id).map(v => v.semantic_view_fqn),
-        agents: wsAgents.filter(a => a.workspace_connection_id === wc.id).map(a => a.agent_fqn),
       }));
       setAvailableConnections(enriched);
     } catch (error) {
@@ -405,7 +348,7 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
     }
   };
 
-  // Handle replace connection — verify semantic view/agent compatibility first
+  // Handle replace connection — verify semantic view compatibility first
   const handleReplaceConnection = async () => {
     if (!selectedConnectionId || !availableConnections.length) return;
 
@@ -423,20 +366,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
     if (missingViews.length > 0) {
       setError(`Cannot switch — the target connection is missing semantic view(s): ${missingViews.join(', ')}`);
       return;
-    }
-
-    // Check cortex agents if enabled
-    if (dashboard?.cortexAgentsEnabled) {
-      const dashAgents = (dashboard?.cortexAgents || []).map(a =>
-        (typeof a === 'string' ? a : a.fullyQualifiedName || '').toUpperCase()
-      ).filter(Boolean);
-
-      const targetAgentsUpper = (target.agents || []).map(fqn => fqn.toUpperCase());
-      const missingAgents = dashAgents.filter(fqn => !targetAgentsUpper.includes(fqn));
-      if (missingAgents.length > 0) {
-        setError(`Cannot switch — the target connection is missing agent(s): ${missingAgents.join(', ')}`);
-        return;
-      }
     }
 
     try {
@@ -578,8 +507,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
         role,
         isPublished,
         semanticViewsReferenced,
-        cortexAgentsEnabled,
-        cortexAgents: cortexAgentsEnabled ? cortexAgents : [],
         folder_id: folderId,
       };
 
@@ -588,8 +515,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
         if (pendingYamlImport.tabs) settings.tabs = pendingYamlImport.tabs;
         if (pendingYamlImport.filters) settings.filters = pendingYamlImport.filters;
         if (pendingYamlImport.semanticViewsReferenced) settings.semanticViewsReferenced = pendingYamlImport.semanticViewsReferenced;
-        if (pendingYamlImport.cortexAgentsEnabled != null) settings.cortexAgentsEnabled = pendingYamlImport.cortexAgentsEnabled;
-        if (pendingYamlImport.cortexAgents) settings.cortexAgents = pendingYamlImport.cortexAgents;
         if (pendingYamlImport.customColorSchemes) settings.customColorSchemes = pendingYamlImport.customColorSchemes;
       }
 
@@ -618,8 +543,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
     setAvailableRoles,
     availableSemanticViews,
     setAvailableSemanticViews,
-    availableCortexAgents,
-    setAvailableCortexAgents,
     loadingResources,
     setLoadingResources,
     name,
@@ -636,12 +559,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
     setSemanticViewsReferenced,
     selectedSemanticView,
     setSelectedSemanticView,
-    cortexAgentsEnabled,
-    setCortexAgentsEnabled,
-    cortexAgents,
-    setCortexAgents,
-    selectedCortexAgent,
-    setSelectedCortexAgent,
     folderId,
     setFolderId,
     folders,
@@ -706,8 +623,6 @@ export function useSettingsState(dashboard, isOpen, onClose, onSave, yamlBridgeR
     setErrorViewName,
     semanticViewErrorTimeoutRef,
     removeSemanticView,
-    addCortexAgent,
-    removeCortexAgent,
     testConnection,
     loadAvailableConnections,
     handleReplaceConnection,

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query, transaction, now } from '../db/db.js';
+import { encrypt, decrypt } from '../utils/encryption.js';
 
 export async function listWorkspaces(userId, userRole) {
   if (['owner', 'admin'].includes(userRole)) {
@@ -100,12 +101,13 @@ export async function updateWorkspace(workspaceId, updates) {
 }
 
 export async function getWorkspaceDeletePreview(workspaceId) {
-  const [folders, dashboards, conversations, members, connections] = await Promise.all([
+  const [folders, dashboards, conversations, members, connections, endpoints] = await Promise.all([
     query('SELECT COUNT(*)::int AS count FROM dashboard_folders WHERE workspace_id = $1', [workspaceId]),
     query('SELECT COUNT(*)::int AS count FROM dashboards WHERE workspace_id = $1', [workspaceId]),
     query('SELECT COUNT(*)::int AS count FROM ask_conversations WHERE workspace_id = $1', [workspaceId]),
     query('SELECT COUNT(*)::int AS count FROM workspace_members WHERE workspace_id = $1', [workspaceId]),
     query('SELECT COUNT(*)::int AS count FROM workspace_connections WHERE workspace_id = $1', [workspaceId]),
+    query('SELECT COUNT(*)::int AS count FROM workspace_endpoints WHERE workspace_id = $1', [workspaceId]),
   ]);
 
   return {
@@ -114,6 +116,7 @@ export async function getWorkspaceDeletePreview(workspaceId) {
     conversationCount: conversations.rows[0].count,
     memberCount: members.rows[0].count,
     connectionCount: connections.rows[0].count,
+    endpointCount: endpoints.rows[0].count,
   };
 }
 
@@ -146,8 +149,7 @@ export async function deleteWorkspace(workspaceId) {
     );
 
     // Delete the workspace itself
-    // (workspace_connections, workspace_members, workspace_semantic_views,
-    //  workspace_agents all cascade via FK)
+    // (workspace_connections, workspace_members, workspace_semantic_views cascade via FK)
     await client.query(
       'DELETE FROM workspaces WHERE id = $1',
       [workspaceId],
@@ -255,6 +257,16 @@ export async function removeWorkspaceMember(workspaceId, userId) {
   return true;
 }
 
+// ── Endpoints ────────────────────────────────────────────────
+
+export async function getWorkspaceEndpoints(workspaceId) {
+  const result = await query(
+    'SELECT id, slug, name, is_public, created_at FROM workspace_endpoints WHERE workspace_id = $1 ORDER BY created_at DESC',
+    [workspaceId],
+  );
+  return result.rows;
+}
+
 // ── Semantic Views ───────────────────────────────────────────
 
 export async function getWorkspaceViews(workspaceId, workspaceConnectionId) {
@@ -296,45 +308,236 @@ export async function removeWorkspaceView(viewId, workspaceId) {
   return true;
 }
 
-// ── Agents ───────────────────────────────────────────────────
+// ── AI Config ───────────────────────────────────────────────
 
-export async function getWorkspaceAgents(workspaceId, workspaceConnectionId) {
-  if (workspaceConnectionId) {
-    const result = await query(
-      'SELECT * FROM workspace_agents WHERE workspace_id = $1 AND workspace_connection_id = $2 ORDER BY added_at ASC',
-      [workspaceId, workspaceConnectionId],
-    );
-    return result.rows;
-  }
+const VALID_AI_PROVIDERS = ['cortex', 'openai', 'anthropic', 'bedrock', 'vertex', 'azure'];
+
+export async function getAiConfig(workspaceId) {
   const result = await query(
-    'SELECT * FROM workspace_agents WHERE workspace_id = $1 ORDER BY added_at ASC',
+    'SELECT workspace_id, provider, api_key_encrypted, default_model, endpoint_url, updated_at FROM workspace_ai_config WHERE workspace_id = $1',
+    [workspaceId],
+  );
+  if (result.rows.length === 0) {
+    return { provider: 'cortex', defaultModel: null, hasApiKey: false, endpointUrl: null };
+  }
+  const row = result.rows[0];
+  return {
+    provider: row.provider || 'cortex',
+    defaultModel: row.default_model || null,
+    hasApiKey: !!row.api_key_encrypted,
+    endpointUrl: row.endpoint_url || null,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getAiConfigWithKey(workspaceId) {
+  const result = await query(
+    'SELECT provider, api_key_encrypted, default_model, endpoint_url FROM workspace_ai_config WHERE workspace_id = $1',
+    [workspaceId],
+  );
+  if (result.rows.length === 0) {
+    return { provider: 'cortex', apiKey: null, defaultModel: null, endpointUrl: null };
+  }
+  const row = result.rows[0];
+  let apiKey = null;
+  if (row.api_key_encrypted) {
+    try { apiKey = decrypt(row.api_key_encrypted); } catch { /* corrupted key */ }
+  }
+  return {
+    provider: row.provider || 'cortex',
+    apiKey,
+    defaultModel: row.default_model || null,
+    endpointUrl: row.endpoint_url || null,
+  };
+}
+
+export async function setAiConfig(workspaceId, { provider, apiKey, defaultModel, endpointUrl }) {
+  if (provider && !VALID_AI_PROVIDERS.includes(provider)) {
+    throw new Error(`Invalid AI provider: "${provider}". Valid: ${VALID_AI_PROVIDERS.join(', ')}`);
+  }
+
+  const existing = await query('SELECT workspace_id FROM workspace_ai_config WHERE workspace_id = $1', [workspaceId]);
+  const encryptedKey = apiKey ? encrypt(apiKey) : null;
+
+  if (existing.rows.length === 0) {
+    await query(
+      `INSERT INTO workspace_ai_config (workspace_id, provider, api_key_encrypted, default_model, endpoint_url)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [workspaceId, provider || 'cortex', encryptedKey, defaultModel || null, endpointUrl || null],
+    );
+  } else {
+    const sets = [];
+    const vals = [];
+    let idx = 1;
+    if (provider !== undefined) { sets.push(`provider = $${idx++}`); vals.push(provider); }
+    if (apiKey !== undefined) { sets.push(`api_key_encrypted = $${idx++}`); vals.push(encryptedKey); }
+    if (defaultModel !== undefined) { sets.push(`default_model = $${idx++}`); vals.push(defaultModel || null); }
+    if (endpointUrl !== undefined) { sets.push(`endpoint_url = $${idx++}`); vals.push(endpointUrl || null); }
+    if (sets.length > 0) {
+      vals.push(workspaceId);
+      await query(`UPDATE workspace_ai_config SET ${sets.join(', ')} WHERE workspace_id = $${idx}`, vals);
+    }
+  }
+
+  return getAiConfig(workspaceId);
+}
+
+// ── Model Registry ──────────────────────────────────────────
+
+export async function listWorkspaceModels(workspaceId) {
+  const result = await query(
+    `SELECT id, workspace_id, model_id, display_name, provider, description,
+            context_window, capabilities, is_default, is_enabled,
+            endpoint_url, api_key_encrypted IS NOT NULL as has_api_key,
+            created_at, updated_at
+     FROM workspace_models
+     WHERE workspace_id = $1
+     ORDER BY is_default DESC, display_name ASC`,
     [workspaceId],
   );
   return result.rows;
 }
 
-export async function addWorkspaceAgent(workspaceId, workspaceConnectionId, agentFqn, label) {
-  const id = crypto.randomUUID();
-  const normalizedFqn = agentFqn.trim().toUpperCase();
-  await query(
-    'INSERT INTO workspace_agents (id, workspace_id, workspace_connection_id, agent_fqn, label) VALUES ($1, $2, $3, $4, $5)',
-    [id, workspaceId, workspaceConnectionId, normalizedFqn, label || null],
+export async function addWorkspaceModel(workspaceId, {
+  modelId, displayName, provider, description, contextWindow,
+  capabilities, isDefault, endpointUrl, apiKey, addedBy,
+}) {
+  if (!modelId || !displayName || !provider) {
+    throw new Error('modelId, displayName, and provider are required');
+  }
+  if (!VALID_AI_PROVIDERS.includes(provider)) {
+    throw new Error(`Invalid provider: "${provider}"`);
+  }
+
+  const encKey = apiKey ? encrypt(apiKey) : null;
+
+  // If marking as default, unset any existing default
+  if (isDefault) {
+    await query('UPDATE workspace_models SET is_default = false WHERE workspace_id = $1', [workspaceId]);
+  }
+
+  const result = await query(
+    `INSERT INTO workspace_models
+       (workspace_id, model_id, display_name, provider, description, context_window,
+        capabilities, is_default, endpoint_url, api_key_encrypted, added_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING id`,
+    [workspaceId, modelId, displayName, provider, description || null,
+     contextWindow || null, JSON.stringify(capabilities || []),
+     isDefault || false, endpointUrl || null, encKey, addedBy || null],
   );
-  return getWorkspaceAgents(workspaceId, workspaceConnectionId);
+
+  return { id: result.rows[0].id, ...(await getWorkspaceModel(result.rows[0].id)) };
 }
 
-export async function updateWorkspaceAgent(agentId, workspaceId, { sampleQuestions }) {
-  const questions = Array.isArray(sampleQuestions) ? sampleQuestions.slice(0, 5) : [];
-  await query(
-    'UPDATE workspace_agents SET sample_questions = $1 WHERE id = $2 AND workspace_id = $3',
-    [JSON.stringify(questions), agentId, workspaceId],
+async function getWorkspaceModel(modelRowId) {
+  const result = await query(
+    `SELECT id, workspace_id, model_id, display_name, provider, description,
+            context_window, capabilities, is_default, is_enabled,
+            endpoint_url, api_key_encrypted IS NOT NULL as has_api_key,
+            created_at, updated_at
+     FROM workspace_models WHERE id = $1`,
+    [modelRowId],
   );
-  return { success: true, sampleQuestions: questions };
+  return result.rows[0] || null;
 }
 
-export async function removeWorkspaceAgent(agentId, workspaceId) {
-  await query('DELETE FROM workspace_agents WHERE id = $1 AND workspace_id = $2', [agentId, workspaceId]);
-  return true;
+export async function updateWorkspaceModel(modelRowId, workspaceId, updates) {
+  const allowed = ['display_name', 'description', 'context_window', 'capabilities',
+    'is_default', 'is_enabled', 'endpoint_url'];
+  const sets = [];
+  const vals = [];
+  let idx = 1;
+
+  for (const [key, val] of Object.entries(updates)) {
+    if (key === 'apiKey' && val) {
+      sets.push(`api_key_encrypted = $${idx++}`);
+      vals.push(encrypt(val));
+    } else if (key === 'capabilities') {
+      sets.push(`capabilities = $${idx++}`);
+      vals.push(JSON.stringify(val));
+    } else if (allowed.includes(key)) {
+      sets.push(`${key} = $${idx++}`);
+      vals.push(val);
+    }
+  }
+
+  if (updates.is_default) {
+    await query('UPDATE workspace_models SET is_default = false WHERE workspace_id = $1', [workspaceId]);
+  }
+
+  if (sets.length > 0) {
+    vals.push(modelRowId, workspaceId);
+    await query(
+      `UPDATE workspace_models SET ${sets.join(', ')} WHERE id = $${idx} AND workspace_id = $${idx + 1}`,
+      vals,
+    );
+  }
+
+  return getWorkspaceModel(modelRowId);
+}
+
+export async function removeWorkspaceModel(modelRowId, workspaceId) {
+  await query('DELETE FROM workspace_models WHERE id = $1 AND workspace_id = $2', [modelRowId, workspaceId]);
+}
+
+/**
+ * Resolve model config for an LLM call.
+ *
+ * Resolution order:
+ *   1. Workspace custom models (workspace_models table)
+ *   2. Platform model registry + inference router (cross-cloud routing)
+ *   3. Workspace-level AI config fallback
+ */
+export async function resolveModelConfig(workspaceId, requestedModel) {
+  if (!workspaceId) return { provider: 'cortex', apiKey: null, endpointUrl: null, model: requestedModel };
+
+  // Determine which model to resolve
+  const cfg = await getAiConfigWithKey(workspaceId);
+  const modelId = requestedModel || cfg.defaultModel;
+
+  // 1. Check workspace custom models first
+  if (modelId) {
+    const modelRow = await query(
+      `SELECT model_id, provider, endpoint_url, api_key_encrypted
+       FROM workspace_models
+       WHERE workspace_id = $1 AND model_id = $2 AND is_enabled = true`,
+      [workspaceId, modelId],
+    );
+    if (modelRow.rows.length > 0) {
+      const m = modelRow.rows[0];
+      let apiKey = null;
+      if (m.api_key_encrypted) { try { apiKey = decrypt(m.api_key_encrypted); } catch { /* */ } }
+      return { provider: m.provider, apiKey, endpointUrl: m.endpoint_url, model: m.model_id };
+    }
+  }
+
+  // 2. Check platform model registry (cross-cloud inference routing)
+  if (modelId) {
+    const { resolveEndpoint, isPlatformModel } = await import('./platformModelService.js');
+    if (await isPlatformModel(modelId)) {
+      const endpoint = await resolveEndpoint(modelId, {
+        customerCloud: process.env.PLATFORM_CLOUD,
+        customerRegion: process.env.PLATFORM_REGION,
+      });
+      if (endpoint) {
+        return {
+          provider: endpoint.provider,
+          apiKey: cfg.apiKey,
+          endpointUrl: endpoint.endpointConfig?.endpointUrl || endpoint.region,
+          model: modelId,
+        };
+      }
+    }
+  }
+
+  // 3. Fall back to workspace-level AI config
+  return {
+    provider: cfg.provider,
+    apiKey: cfg.apiKey,
+    endpointUrl: cfg.endpointUrl,
+    model: modelId || requestedModel,
+  };
 }
 
 export default {
@@ -353,12 +556,17 @@ export default {
   getWorkspaceMembers,
   addWorkspaceMember,
   removeWorkspaceMember,
+  getWorkspaceEndpoints,
   getWorkspaceViews,
   addWorkspaceView,
   updateWorkspaceView,
   removeWorkspaceView,
-  getWorkspaceAgents,
-  addWorkspaceAgent,
-  updateWorkspaceAgent,
-  removeWorkspaceAgent,
+  getAiConfig,
+  getAiConfigWithKey,
+  setAiConfig,
+  listWorkspaceModels,
+  addWorkspaceModel,
+  updateWorkspaceModel,
+  removeWorkspaceModel,
+  resolveModelConfig,
 };

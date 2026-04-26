@@ -148,6 +148,153 @@ CREATE TABLE IF NOT EXISTS workspace_agents (
 CREATE INDEX IF NOT EXISTS idx_ws_agents_ws ON workspace_agents(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_ws_agents_conn ON workspace_agents(workspace_connection_id);
 
+-- MCP servers attached to a workspace connection
+CREATE TABLE IF NOT EXISTS workspace_mcp_servers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  workspace_connection_id UUID NOT NULL REFERENCES workspace_connections(id) ON DELETE CASCADE,
+  mcp_server_fqn VARCHAR(1000) NOT NULL,
+  label VARCHAR(255),
+  sample_questions JSONB DEFAULT '[]',
+  added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_ws_conn_mcp_server UNIQUE (workspace_id, workspace_connection_id, mcp_server_fqn)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ws_mcp_servers_ws ON workspace_mcp_servers(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_ws_mcp_servers_conn ON workspace_mcp_servers(workspace_connection_id);
+
+-- Published query endpoints (Tinybird-style query-as-API)
+CREATE TABLE IF NOT EXISTS workspace_endpoints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  workspace_connection_id UUID NOT NULL REFERENCES workspace_connections(id) ON DELETE CASCADE,
+  slug VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  endpoint_type VARCHAR(20) NOT NULL DEFAULT 'structured',
+  semantic_view_fqn VARCHAR(1000) NOT NULL,
+  query_definition JSONB NOT NULL,
+  parameters JSONB DEFAULT '[]',
+  share_token VARCHAR(64) UNIQUE,
+  is_public BOOLEAN DEFAULT false,
+  validated_at TIMESTAMPTZ,
+  created_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_ws_endpoint_slug UNIQUE (workspace_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ws_endpoints_ws ON workspace_endpoints(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_ws_endpoints_conn ON workspace_endpoints(workspace_connection_id);
+CREATE INDEX IF NOT EXISTS idx_ws_endpoints_token ON workspace_endpoints(share_token);
+
+DROP TRIGGER IF EXISTS update_ws_endpoints_updated_at ON workspace_endpoints;
+CREATE TRIGGER update_ws_endpoints_updated_at
+  BEFORE UPDATE ON workspace_endpoints
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Workspace-scoped API keys for bearer token access to endpoints
+CREATE TABLE IF NOT EXISTS workspace_api_keys (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  key_hash VARCHAR(128) NOT NULL,
+  key_prefix VARCHAR(12) NOT NULL,
+  created_by UUID NOT NULL REFERENCES users(id),
+  last_used_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_ws_api_key_name UNIQUE (workspace_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ws_api_keys_ws ON workspace_api_keys(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_ws_api_keys_hash ON workspace_api_keys(key_hash);
+
+-- ============================================
+-- WORKSPACE AI CONFIG
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS workspace_ai_config (
+  workspace_id UUID PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  provider VARCHAR(20) NOT NULL DEFAULT 'cortex',
+  api_key_encrypted TEXT,
+  default_model VARCHAR(100),
+  endpoint_url TEXT,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+DROP TRIGGER IF EXISTS update_workspace_ai_config_updated_at ON workspace_ai_config;
+CREATE TRIGGER update_workspace_ai_config_updated_at
+  BEFORE UPDATE ON workspace_ai_config
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Models available within a workspace (API-hosted or self-hosted open models)
+CREATE TABLE IF NOT EXISTS workspace_models (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  model_id VARCHAR(255) NOT NULL,
+  display_name VARCHAR(255) NOT NULL,
+  provider VARCHAR(20) NOT NULL,
+  description TEXT,
+  context_window INTEGER,
+  capabilities JSONB DEFAULT '[]',
+  is_default BOOLEAN DEFAULT false,
+  is_enabled BOOLEAN DEFAULT true,
+  endpoint_url TEXT,
+  api_key_encrypted TEXT,
+  added_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_ws_model UNIQUE (workspace_id, provider, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ws_models_ws ON workspace_models(workspace_id);
+
+DROP TRIGGER IF EXISTS update_workspace_models_updated_at ON workspace_models;
+CREATE TRIGGER update_workspace_models_updated_at
+  BEFORE UPDATE ON workspace_models
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Platform model catalog — defines which models the platform supports
+CREATE TABLE IF NOT EXISTS platform_models (
+  id VARCHAR(255) PRIMARY KEY,
+  display_name VARCHAR(255) NOT NULL,
+  vendor VARCHAR(100) NOT NULL,
+  category VARCHAR(50) NOT NULL DEFAULT 'chat',
+  context_window INTEGER,
+  is_enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Cloud endpoints where each model is deployed (cross-cloud, cross-region)
+CREATE TABLE IF NOT EXISTS platform_model_endpoints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  model_id VARCHAR(255) NOT NULL REFERENCES platform_models(id) ON DELETE CASCADE,
+  provider VARCHAR(20) NOT NULL,
+  cloud VARCHAR(10) NOT NULL,
+  region VARCHAR(100) NOT NULL,
+  endpoint_config JSONB DEFAULT '{}',
+  priority INTEGER DEFAULT 100,
+  is_active BOOLEAN DEFAULT true,
+  health_status VARCHAR(20) DEFAULT 'healthy',
+  last_health_check TIMESTAMPTZ,
+  avg_latency_ms INTEGER,
+  cost_per_1k_tokens NUMERIC(10, 6),
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_model_cloud_region UNIQUE (model_id, cloud, region)
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_endpoints_model ON platform_model_endpoints(model_id);
+CREATE INDEX IF NOT EXISTS idx_platform_endpoints_cloud ON platform_model_endpoints(cloud, region);
+CREATE INDEX IF NOT EXISTS idx_platform_endpoints_active ON platform_model_endpoints(is_active, health_status);
+
+DROP TRIGGER IF EXISTS update_platform_model_endpoints_updated_at ON platform_model_endpoints;
+CREATE TRIGGER update_platform_model_endpoints_updated_at
+  BEFORE UPDATE ON platform_model_endpoints
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================
 -- DASHBOARD FOLDERS
 -- ============================================
@@ -239,6 +386,27 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
+
+-- ============================================
+-- APP EVENTS (consumption / analytics tracking)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS app_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type VARCHAR(50) NOT NULL,
+  user_id UUID REFERENCES users(id),
+  workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
+  entity_type VARCHAR(50),
+  entity_id UUID,
+  metadata JSONB DEFAULT '{}',
+  ip_address VARCHAR(45),
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_events_type ON app_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_app_events_ws_created ON app_events(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_app_events_user ON app_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_events_created ON app_events(created_at);
 
 -- ============================================
 -- FUNCTIONS & TRIGGERS

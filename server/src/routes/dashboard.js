@@ -11,6 +11,7 @@ import dashboardServicePg from '../services/dashboardServicePg.js';
 const dashboardService = dashboardServicePg;
 import { query } from '../db/db.js';
 import yaml from 'js-yaml';
+import { trackEvent } from '../services/eventTracker.js';
 
 // Verbose logging toggle
 const VERBOSE = process.env.VERBOSE_LOGS === 'true';
@@ -158,8 +159,17 @@ dashboardRoutes.get('/:id', requireMfaForView, async (req, res, next) => {
     }
     
     const dashboard = await dashboardServicePg.getDashboardById(req.params.id);
-    // Include access level and check if current user is owner
     const isOwner = dashboard.owner_id === req.user.id;
+
+    trackEvent('dashboard.view', {
+      userId: req.user.id,
+      workspaceId: dashboard.workspace_id || null,
+      entityType: 'dashboard',
+      entityId: dashboard.id,
+      metadata: { dashboardName: dashboard.name },
+      ip: req.ip,
+    });
+
     res.json({ 
       dashboard: {
         ...mapDashboardForFrontend(dashboard),
@@ -339,7 +349,7 @@ dashboardRoutes.post('/', requireMfaForEdit, async (req, res, next) => {
 dashboardRoutes.put('/:id', requireMfaForEdit, async (req, res, next) => {
   try {
     
-    const { name, description, warehouse, role, visibility, isPublished, yamlDefinition, tabs, filters, semanticViewsReferenced, cortexAgentsEnabled, cortexAgents, customColorSchemes, folderId } = req.body;
+    const { name, description, warehouse, role, visibility, isPublished, yamlDefinition, tabs, filters, semanticViewsReferenced, customColorSchemes, folderId } = req.body;
     
     const updates = {};
     if (name !== undefined) updates.name = name;
@@ -351,7 +361,7 @@ dashboardRoutes.put('/:id', requireMfaForEdit, async (req, res, next) => {
     if (folderId !== undefined) updates.folderId = folderId;
     
     // Build yaml_definition from provided data
-    if (yamlDefinition !== undefined || tabs !== undefined || filters !== undefined || semanticViewsReferenced !== undefined || cortexAgentsEnabled !== undefined || cortexAgents !== undefined || customColorSchemes !== undefined) {
+    if (yamlDefinition !== undefined || tabs !== undefined || filters !== undefined || semanticViewsReferenced !== undefined || customColorSchemes !== undefined) {
       let yamlContent = {};
       
       // If yamlDefinition is already a string, parse it first
@@ -370,8 +380,6 @@ dashboardRoutes.put('/:id', requireMfaForEdit, async (req, res, next) => {
       if (tabs !== undefined) yamlContent.tabs = tabs;
       if (filters !== undefined) yamlContent.filters = filters;
       if (semanticViewsReferenced !== undefined) yamlContent.semanticViewsReferenced = semanticViewsReferenced;
-      if (cortexAgentsEnabled !== undefined) yamlContent.cortexAgentsEnabled = cortexAgentsEnabled;
-      if (cortexAgents !== undefined) yamlContent.cortexAgents = cortexAgents;
       if (customColorSchemes !== undefined) yamlContent.customColorSchemes = customColorSchemes;
       
       // Convert to YAML string for storage

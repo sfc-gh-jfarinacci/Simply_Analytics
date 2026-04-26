@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FiZap, FiSend, FiLoader, FiChevronDown, FiChevronRight } from 'react-icons/fi';
-import { dashboardAiApi } from '../../../api/apiClient';
+import { streamDashboardChat } from '../../../api/apiClient';
 import { useAppStore } from '../../../store/appStore';
 
 const EditorCopilot = ({
@@ -116,21 +116,29 @@ const EditorCopilot = ({
 
       const systemMsg = `The user is editing a single widget in the widget editor. Current widget state:\n${JSON.stringify(currentWidgetYaml, null, 2)}\n\nRespond with update_widget action to modify this widget. The widgetId is "${currentWidgetYaml.id}".\n\nIMPORTANT RULES:\n\n1. FILTERS: Include a "filtersApplied" array when adding filters. Each filter: { field: "FIELD_NAME", operator: "IN"|"="|"!="|">"|"<"|">="|"<="|"LIKE"|"NOT IN"|"BETWEEN", value: "single_value" } OR { field: "FIELD_NAME", operator: "IN", values: ["val1","val2"] }.\n\n2. SORTS: Include a "sortsApplied" array: [{ field: "FIELD_NAME", direction: "ASC"|"DESC" }].\n\n3. CALCULATED FIELDS: When a request needs a derived/computed value that doesn't exist as a native dimension or measure, create it via "customColumns". Each entry: { name: "FIELD_NAME", expression: "SQL expression" }. Reference existing fields with bracket syntax: [EXISTING_FIELD]. Examples:\n   - Revenue per unit: { name: "REVENUE_PER_UNIT", expression: "[REVENUE] / [QUANTITY]" }\n   - Profit margin: { name: "PROFIT_MARGIN", expression: "([REVENUE] - [COST]) / [REVENUE] * 100" }\n   - Year extraction: { name: "ORDER_YEAR", expression: "YEAR([ORDER_DATE])" }\n   - Conditional: { name: "SIZE_CATEGORY", expression: "CASE WHEN [QUANTITY] > 100 THEN 'Large' WHEN [QUANTITY] > 10 THEN 'Medium' ELSE 'Small' END" }\n   After creating a calculated field, you can use its name in the fields array just like any other field. Set isCustomColumn: true and semanticType: "measure" (for numeric) or "dimension" (for categorical) on that field entry.\n\n4. Always include ALL existing fields, filters, sorts, and customColumns in your response to avoid losing state.`;
 
-      const result = await dashboardAiApi.chat({
-        messages: [
-          { role: 'user', content: `${systemMsg}\n\nUser request: ${content}` },
-        ],
-        currentYaml: {
-          tabs: [{ id: 'tab-1', title: 'Sheet 1', widgets: [currentWidgetYaml] }],
-          semanticViewsReferenced: currentDashboard?.semanticViewsReferenced || [],
+      let result = null;
+      await streamDashboardChat(
+        {
+          messages: [
+            { role: 'user', content: `${systemMsg}\n\nUser request: ${content}` },
+          ],
+          currentYaml: {
+            tabs: [{ id: 'tab-1', title: 'Sheet 1', widgets: [currentWidgetYaml] }],
+            semanticViewsReferenced: currentDashboard?.semanticViewsReferenced || [],
+          },
+          focusedWidgetId: currentWidgetYaml.id,
+          semanticViewMetadata: viewMeta,
+          connectionId: currentDashboard?.connection_id,
+          warehouse: currentDashboard?.warehouse,
+          role: currentDashboard?.role,
         },
-        focusedWidgetId: currentWidgetYaml.id,
-        semanticViewMetadata: viewMeta,
-        connectionId: currentDashboard?.connection_id,
-        warehouse: currentDashboard?.warehouse,
-        role: currentDashboard?.role,
-      });
+        (event, data) => {
+          if (event === 'response.result') result = data;
+          if (event === 'error') throw new Error(data.error || 'AI chat failed');
+        },
+      );
 
+      if (!result) result = { message: 'No response received', action: 'none' };
       setLastResponse(result);
 
       if (result.action === 'update_widget' && result.yaml?.widget) {

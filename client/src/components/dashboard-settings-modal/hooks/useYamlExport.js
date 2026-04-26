@@ -103,23 +103,6 @@ export function useYamlExport(activeTab, currentDashboard, currentRole) {
       }
       yaml += '\n';
 
-      // Cortex Agents
-      yaml += `${indent(1)}cortexAgentsEnabled: ${db.cortexAgentsEnabled || false}\n`;
-      yaml += `${indent(1)}cortexAgents:\n`;
-      if (db.cortexAgentsEnabled && db.cortexAgents && db.cortexAgents.length > 0) {
-        db.cortexAgents.forEach((agent) => {
-          const agentName = typeof agent === 'string' ? agent : agent.name;
-          const agentFqn = typeof agent === 'object' ? agent.fullyQualifiedName : null;
-          yaml += `${indent(2)}- name: "${agentName}"\n`;
-          if (agentFqn) {
-            yaml += `${indent(3)}fullyQualifiedName: "${agentFqn}"\n`;
-          }
-        });
-      } else {
-        yaml += `${indent(2)}[] # No cortex agents\n`;
-      }
-      yaml += '\n';
-
       // Custom Color Schemes
       yaml += `${indent(1)}customColorSchemes:\n`;
       if (db.customColorSchemes && db.customColorSchemes.length > 0) {
@@ -339,14 +322,12 @@ export function useYamlExport(activeTab, currentDashboard, currentRole) {
   const currentTabs = currentDashboard?.tabs;
   const tabsJson = JSON.stringify(currentTabs);
   const semanticViewsJson = JSON.stringify(currentDashboard?.semanticViewsReferenced);
-  const cortexAgentsJson = JSON.stringify(currentDashboard?.cortexAgents);
-
   useEffect(() => {
     if (activeTab === 'yaml' && currentDashboard) {
       const yamlData = generateYamlFromDashboard(currentDashboard);
       setYamlContent(yamlData);
     }
-  }, [activeTab, currentDashboard, tabsJson, semanticViewsJson, cortexAgentsJson]);
+  }, [activeTab, currentDashboard, tabsJson, semanticViewsJson]);
 
   // Parse YAML content using js-yaml library — unified schema
   const parseYamlContent = (content) => {
@@ -387,8 +368,6 @@ export function useYamlExport(activeTab, currentDashboard, currentRole) {
         tabs,
         filters: dashboardData.filters || [],
         semanticViewsReferenced,
-        cortexAgentsEnabled: dashboardData.cortexAgentsEnabled || false,
-        cortexAgents: dashboardData.cortexAgents || [],
         customColorSchemes: dashboardData.customColorSchemes || [],
       };
     } catch (err) {
@@ -455,13 +434,6 @@ export function useYamlExport(activeTab, currentDashboard, currentRole) {
           if (parsed.semanticViewsReferenced) {
             pendingUpdates.semanticViewsReferenced = parsed.semanticViewsReferenced;
           }
-          if (parsed.cortexAgentsEnabled != null) {
-            pendingUpdates.cortexAgentsEnabled = parsed.cortexAgentsEnabled;
-          }
-          if (parsed.cortexAgents) {
-            pendingUpdates.cortexAgents = parsed.cortexAgents;
-          }
-
           if (Object.keys(pendingUpdates).length > 0) {
             setPendingYamlImport(pendingUpdates);
             setImportSuccess(true);

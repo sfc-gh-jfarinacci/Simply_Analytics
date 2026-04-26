@@ -8,8 +8,7 @@ import { Router } from 'express';
 import twoFactorService from '../services/twoFactorService.js';
 import { getServerInstanceId } from './auth.js';
 import configStore from '../config/configStore.js';
-
-function getJwtSecret() { return configStore.get('JWT_SECRET') || process.env.JWT_SECRET || 'simply-analytics-secret-change-in-production'; }
+import { getJwtSecret } from '../middleware/auth.js';
 
 export const twoFactorRoutes = Router();
 

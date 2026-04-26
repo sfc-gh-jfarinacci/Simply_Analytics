@@ -23,7 +23,7 @@ function createPool() {
     min: 2,
     max: 20,
     idleTimeoutMillis: 60000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 5000,
   });
   let poolReady = false;
   p.on('connect', () => {

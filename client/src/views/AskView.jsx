@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
-import { askApi, streamAskChat, streamAgentChat } from '../api/modules/askApi';
+import { askApi, streamAskChat } from '../api/modules/askApi';
 import { workspaceApi } from '../api/modules/workspaceApi';
 import ChatMessage from '../components/ask/AskChatMessage';
 import ChatInput from '../components/ask/AskChatInput';
 import { HiSparkles } from 'react-icons/hi2';
 import {
-  FiCpu, FiChevronDown, FiLayers, FiDatabase,
+  FiChevronDown, FiLayers, FiDatabase,
   FiArrowLeft, FiPlus, FiMessageSquare, FiTrash2, FiSearch, FiMenu,
 } from 'react-icons/fi';
 import '../styles/SimplyAsk.css';
@@ -27,11 +27,9 @@ export default function AskView() {
     askConversations, setAskConversations,
     renameAskConversation, removeAskConversation,
     activeWorkspace,
-    askMode, setAskMode,
     askWorkspaceConnections, askActiveConnectionId, setAskActiveConnectionId,
-    askWorkspaceViews, askWorkspaceAgents,
+    askWorkspaceViews,
     askActiveViewFqn, setAskActiveViewFqn,
-    askActiveAgentFqn, setAskActiveAgentFqn,
     setAskWorkspaceResources,
     getAskSavedSession,
   } = useAppStore();
@@ -61,9 +59,6 @@ export default function AskView() {
 
   useEffect(() => {
     const saved = getAskSavedSession();
-    if (saved.mode && saved.mode !== askMode) {
-      setAskMode(saved.mode);
-    }
     if (saved.conversationId) {
       restoredRef.current = true;
     }
@@ -72,12 +67,12 @@ export default function AskView() {
   useEffect(() => {
     const wsId = activeWorkspace?.id;
     if (!wsId) {
-      setAskWorkspaceResources([], [], []);
+      setAskWorkspaceResources([], []);
       return;
     }
     workspaceApi.get(wsId)
       .then(res => {
-        setAskWorkspaceResources(res.connections || [], res.semanticViews || [], res.agents || []);
+        setAskWorkspaceResources(res.connections || [], res.semanticViews || []);
       })
       .catch(console.error);
   }, [activeWorkspace?.id]);
@@ -90,7 +85,7 @@ export default function AskView() {
       return;
     }
     setConvsLoading(true);
-    askApi.listConversations(wsId, askMode)
+    askApi.listConversations(wsId, 'semantic')
       .then(res => {
         const convs = res.conversations || [];
         setAskConversations(convs);
@@ -107,7 +102,7 @@ export default function AskView() {
       })
       .catch(console.error)
       .finally(() => setConvsLoading(false));
-  }, [activeWorkspace?.id, askMode]);
+  }, [activeWorkspace?.id]);
 
   // ── General effects ───────────────────────────────────────
 
@@ -142,7 +137,6 @@ export default function AskView() {
   // ── Derived state ─────────────────────────────────────────
 
   const wsHasConnection = askWorkspaceConnections.length > 0;
-  const isAgent = askMode === 'agent';
 
   const activeWsConn = askWorkspaceConnections.find(c => c.connection_id === askActiveConnectionId);
 
@@ -151,22 +145,16 @@ export default function AskView() {
     return askWorkspaceViews.filter(v => v.workspace_connection_id === activeWsConn.id);
   }, [askWorkspaceViews, activeWsConn?.id]);
 
-  const filteredAgents = useMemo(() => {
-    if (!activeWsConn) return [];
-    return askWorkspaceAgents.filter(a => a.workspace_connection_id === activeWsConn.id);
-  }, [askWorkspaceAgents, activeWsConn?.id]);
-
-  const resources = isAgent ? filteredAgents : filteredViews;
-  const activeFqn = isAgent ? askActiveAgentFqn : askActiveViewFqn;
-  const setActiveFqn = isAgent ? setAskActiveAgentFqn : setAskActiveViewFqn;
-  const hasResource = !!activeFqn && resources.some(r => (isAgent ? r.agent_fqn : r.semantic_view_fqn) === activeFqn);
+  const resources = filteredViews;
+  const activeFqn = askActiveViewFqn;
+  const setActiveFqn = setAskActiveViewFqn;
+  const hasResource = !!activeFqn && resources.some(r => r.semantic_view_fqn === activeFqn);
 
   useEffect(() => {
     if (!hasResource && resources.length > 0) {
-      const firstFqn = isAgent ? resources[0].agent_fqn : resources[0].semantic_view_fqn;
-      setActiveFqn(firstFqn);
+      setActiveFqn(resources[0].semantic_view_fqn);
     }
-  }, [askActiveConnectionId, askMode, resources.length]);
+  }, [askActiveConnectionId, resources.length]);
 
   const activeConv = askConversations.find(c => c.id === askActiveConversationId);
   const chatTitle = activeConv?.title
@@ -181,9 +169,7 @@ export default function AskView() {
   const hasMessages = askMessages.length > 0;
   const isConnected = wsHasConnection && !!askActiveConnectionId;
 
-  const activeResourceObj = isAgent
-    ? askWorkspaceAgents.find(a => a.agent_fqn === askActiveAgentFqn)
-    : askWorkspaceViews.find(v => v.semantic_view_fqn === askActiveViewFqn);
+  const activeResourceObj = askWorkspaceViews.find(v => v.semantic_view_fqn === askActiveViewFqn);
   const rawSampleQ = activeResourceObj?.sample_questions;
   const sampleQuestions = Array.isArray(rawSampleQ)
     ? rawSampleQ
@@ -193,11 +179,11 @@ export default function AskView() {
   const emptySubtitle = !isConnected
     ? 'No connection configured. Assign a connection to this workspace first.'
     : !hasResource
-      ? 'Select a semantic view or agent above to start chatting.'
+      ? 'Select a semantic view above to start chatting.'
       : 'What would you like to explore?';
   const placeholder = hasResource
     ? `Ask about ${activeWorkspace?.name ?? ''}...`
-    : 'Select a semantic view or agent to start';
+    : 'Select a semantic view to start';
 
   // ── Handlers ──────────────────────────────────────────────
 
@@ -292,16 +278,14 @@ export default function AskView() {
     const abortController = new AbortController();
     abortRef.current = abortController;
 
-    const streamFn = isAgent ? streamAgentChat : streamAskChat;
-
     try {
-      await streamFn(
+      await streamAskChat(
         {
           conversationId: askActiveConversationId || undefined,
           content,
           connectionId: askActiveConnectionId || undefined,
           workspaceId: activeWorkspace?.id,
-          ...(isAgent ? { agentFqn: askActiveAgentFqn } : { semanticView: askActiveViewFqn }),
+          semanticView: askActiveViewFqn,
         },
         (eventType, data) => {
           switch (eventType) {
@@ -435,11 +419,11 @@ export default function AskView() {
       setAskStreaming(false);
       updateLastAskAssistantMessage(m => ({ ...m, isStreaming: false, phase: 'done' }));
       abortRef.current = null;
-      askApi.listConversations(activeWorkspace?.id, askMode)
+      askApi.listConversations(activeWorkspace?.id, 'semantic')
         .then(res => setAskConversations(res.conversations || []))
         .catch(console.error);
     }
-  }, [askActiveConversationId, wsHasConnection, askIsStreaming, activeWorkspace?.id, askMode, isAgent, askActiveConnectionId, askActiveViewFqn, askActiveAgentFqn]);
+  }, [askActiveConversationId, wsHasConnection, askIsStreaming, activeWorkspace?.id, askActiveConnectionId, askActiveViewFqn]);
 
   // ── Render ────────────────────────────────────────────────
 
@@ -549,25 +533,6 @@ export default function AskView() {
             <div className="ask-session-right-items">
               {activeWorkspace && (
                 <>
-                  <div className="ask-session-mode-toggle">
-                    <button
-                      className={`ask-session-mode-btn ${askMode === 'semantic' ? 'active' : ''}`}
-                      onClick={() => askMode !== 'semantic' && setAskMode('semantic')}
-                      disabled={askIsStreaming}
-                    >
-                      <FiLayers /> <span>Semantic</span>
-                    </button>
-                    <button
-                      className={`ask-session-mode-btn ${askMode === 'agent' ? 'active' : ''}`}
-                      onClick={() => askMode !== 'agent' && setAskMode('agent')}
-                      disabled={askIsStreaming}
-                    >
-                      <FiCpu /> <span>Agent</span>
-                    </button>
-                  </div>
-
-                  <span className="ask-session-divider" />
-
                   <div className="ask-session-dropdown-wrap" ref={connDropdownRef}>
                     <button
                       className="ask-session-dropdown-btn"
@@ -606,18 +571,18 @@ export default function AskView() {
                       className="ask-session-dropdown-btn"
                       onClick={() => setResourceDropdownOpen(o => !o)}
                       disabled={askIsStreaming || resources.length === 0}
-                      title={activeFqn || `No ${isAgent ? 'agent' : 'semantic view'}`}
+                      title={activeFqn || 'No semantic view'}
                     >
-                      {isAgent ? <FiCpu className="ask-session-dropdown-icon" /> : <FiLayers className="ask-session-dropdown-icon" />}
+                      <FiLayers className="ask-session-dropdown-icon" />
                       <span className="ask-session-dropdown-label">
-                        {activeFqn ? shortName(activeFqn) : (isAgent ? 'Agent' : 'Semantic View')}
+                        {activeFqn ? shortName(activeFqn) : 'Semantic View'}
                       </span>
                       {resources.length > 1 && <FiChevronDown className={`ask-session-chevron ${resourceDropdownOpen ? 'open' : ''}`} />}
                     </button>
                     {resourceDropdownOpen && resources.length > 0 && (
                       <div className="ask-session-dropdown-menu">
                         {resources.map(r => {
-                          const fqn = isAgent ? r.agent_fqn : r.semantic_view_fqn;
+                          const fqn = r.semantic_view_fqn;
                           return (
                             <button
                               key={r.id}
@@ -663,26 +628,6 @@ export default function AskView() {
               {mobileMenuOpen && activeWorkspace && (
                 <div className="ask-mobile-menu">
                   <div className="ask-mobile-menu-section">
-                    <span className="ask-mobile-menu-label">Mode</span>
-                    <div className="ask-session-mode-toggle">
-                      <button
-                        className={`ask-session-mode-btn ${askMode === 'semantic' ? 'active' : ''}`}
-                        onClick={() => { if (askMode !== 'semantic') setAskMode('semantic'); }}
-                        disabled={askIsStreaming}
-                      >
-                        <FiLayers /> <span>Semantic</span>
-                      </button>
-                      <button
-                        className={`ask-session-mode-btn ${askMode === 'agent' ? 'active' : ''}`}
-                        onClick={() => { if (askMode !== 'agent') setAskMode('agent'); }}
-                        disabled={askIsStreaming}
-                      >
-                        <FiCpu /> <span>Agent</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="ask-mobile-menu-section">
                     <span className="ask-mobile-menu-label">Connection</span>
                     {askWorkspaceConnections.map(c => (
                       <button
@@ -700,16 +645,16 @@ export default function AskView() {
                   </div>
 
                   <div className="ask-mobile-menu-section">
-                    <span className="ask-mobile-menu-label">{isAgent ? 'Agent' : 'Semantic View'}</span>
+                    <span className="ask-mobile-menu-label">Semantic View</span>
                     {resources.map(r => {
-                      const fqn = isAgent ? r.agent_fqn : r.semantic_view_fqn;
+                      const fqn = r.semantic_view_fqn;
                       return (
                         <button
                           key={r.id}
                           className={`ask-mobile-menu-option ${fqn === activeFqn ? 'active' : ''}`}
                           onClick={() => { handleSelectResource(fqn); setMobileMenuOpen(false); }}
                         >
-                          {isAgent ? <FiCpu className="ask-session-dropdown-icon" /> : <FiLayers className="ask-session-dropdown-icon" />}
+                          <FiLayers className="ask-session-dropdown-icon" />
                           <span>{shortName(fqn)}</span>
                         </button>
                       );

@@ -1,15 +1,12 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import { query, now } from '../db/db.js';
 import { getCachedDashboardConnection, getConnectionWithCredentialsForDashboard } from '../services/connectionService.js';
-import { executeQuery } from '../db/dashboardSessionManager.js';
 import { parseColumnsToMetadata } from '../utils/parseColumnsToMetadata.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
-import {
-  askChatAndExecute,
-  buildSqlForWidget,
-} from '../services/askService.js';
+import { askChatAndExecute, buildSqlForWidget } from '../services/askService.js';
+import workspaceService from '../services/workspaceService.js';
+import { trackEvent } from '../services/eventTracker.js';
 
 export const askRoutes = Router();
 export const askPublicRoutes = Router();
@@ -71,14 +68,6 @@ async function getSemanticViewMetadata(connection, viewFqn) {
     });
   });
   return rows;
-}
-
-async function resolveWorkspaceAgents(workspaceId) {
-  const agents = await query(
-    'SELECT agent_fqn FROM workspace_agents WHERE workspace_id = $1',
-    [workspaceId],
-  );
-  return agents.rows.map(a => a.agent_fqn);
 }
 
 // ===== Conversations CRUD =====
@@ -234,6 +223,15 @@ askRoutes.post('/message', async (req, res) => {
 
     sendEvent('response.conversation_id', { conversationId: convId });
 
+    trackEvent('ai.request', {
+      userId: req.user.id,
+      workspaceId: workspaceId || null,
+      entityType: 'conversation',
+      entityId: convId,
+      metadata: { action: 'ask_message', requestType: 'ai' },
+      ip: req.ip,
+    });
+
     const userMsgId = crypto.randomUUID();
     const encryptedUserContent = encrypt(content);
     await query(
@@ -285,8 +283,27 @@ askRoutes.post('/message', async (req, res) => {
     }
 
     sendEvent('response.status', { message: 'Thinking...' });
-    // Keep last N message pairs to avoid sending huge context to LLM.
-    // Artifacts are summarized separately so the AI still knows about older widgets.
+
+    // Resolve workspace AI config: provider, model, and credentials
+    let aiProvider = 'cortex', aiModel, aiApiKey, aiEndpointUrl;
+    try {
+      const aiCfg = await workspaceService.getAiConfigWithKey(workspaceId);
+      aiProvider = aiCfg.provider || 'cortex';
+      aiModel = aiCfg.defaultModel || undefined;
+      aiApiKey = aiCfg.apiKey;
+      aiEndpointUrl = aiCfg.endpointUrl;
+    } catch { /* default to cortex */ }
+
+    // Cortex REST API uses the same Snowflake connection credentials — no extra setup
+    let connWithCreds = null;
+    if (aiProvider === 'cortex') {
+      try {
+        connWithCreds = await getConnectionWithCredentialsForDashboard(effectiveConnectionId);
+      } catch (err) {
+        console.error('[Ask] Failed to resolve connection credentials:', err.message);
+      }
+    }
+
     const MAX_CONTEXT_MESSAGES = 30;
     const trimmedMsgs = priorMsgs.length > MAX_CONTEXT_MESSAGES
       ? priorMsgs.slice(-MAX_CONTEXT_MESSAGES)
@@ -294,17 +311,31 @@ askRoutes.post('/message', async (req, res) => {
     const chatMsgs = trimmedMsgs.map(m => ({ role: m.role, content: m.content }));
     chatMsgs.push({ role: 'user', content });
 
+    let streamedText = '';
     const result = await askChatAndExecute(sfConn, {
       messages: chatMsgs,
       metadata,
       priorArtifacts,
+      model: aiModel,
+      provider: aiProvider,
+      apiKey: aiApiKey,
+      endpointUrl: aiEndpointUrl,
+      connWithCreds,
       onToolStep: (step) => {
         sendEvent('response.tool_step', { tool: step.tool, thinking: step.thinking });
+      },
+      onTextDelta: (delta) => {
+        streamedText += delta;
+        sendEvent('response.text.delta', { text: delta });
       },
     });
 
     responseText = result.message || '';
-    sendEvent('response.text', { text: responseText });
+    if (!streamedText) {
+      sendEvent('response.text', { text: responseText });
+    } else {
+      sendEvent('response.text', { text: responseText });
+    }
 
     if (result.action === 'add_dashboard' && result.dashboard) {
       sendEvent('response.artifact', {
@@ -362,238 +393,6 @@ askRoutes.post('/message', async (req, res) => {
       } catch (saveErr) {
         console.error('[Ask] Failed to save error response:', saveErr);
       }
-    }
-    sendEvent('response.text', { text: `Error: ${err.message}` });
-    sendEvent('error', { error: err.message });
-  } finally {
-    res.end();
-  }
-});
-
-// ===== Agent Chat SSE endpoint =====
-// Reuses the Snowflake REST API approach from /api/v1/semantic/cortex/agent/run
-// but adds conversation persistence for the Ask chat interface.
-
-async function buildSnowflakeAgentHeaders(connectionId, role) {
-  const connWithCreds = await getConnectionWithCredentialsForDashboard(connectionId);
-  if (!connWithCreds) throw new Error('Connection not found');
-
-  const account = connWithCreds.account.replace(/\.snowflakecomputing\.com\/?$/, '');
-  const headers = {
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream',
-  };
-
-  if (connWithCreds.auth_type === 'pat') {
-    headers['Authorization'] = `Bearer ${connWithCreds.credentials.token}`;
-    headers['X-Snowflake-Authorization-Token-Type'] = 'PROGRAMMATIC_ACCESS_TOKEN';
-  } else {
-    const qualifiedAccount = account.toUpperCase();
-    const qualifiedUser = connWithCreds.username.toUpperCase();
-    const privateKeyObj = crypto.createPrivateKey({
-      key: connWithCreds.credentials.privateKey,
-      format: 'pem',
-      passphrase: connWithCreds.credentials.passphrase || undefined,
-    });
-    const publicKeyDer = crypto.createPublicKey(privateKeyObj)
-      .export({ type: 'spki', format: 'der' });
-    const fingerprint = crypto.createHash('sha256').update(publicKeyDer).digest('base64');
-    const nowSec = Math.floor(Date.now() / 1000);
-    const keypairJwt = jwt.sign(
-      {
-        iss: `${qualifiedAccount}.${qualifiedUser}.SHA256:${fingerprint}`,
-        sub: `${qualifiedAccount}.${qualifiedUser}`,
-        iat: nowSec,
-        exp: nowSec + 3600,
-      },
-      { key: connWithCreds.credentials.privateKey, passphrase: connWithCreds.credentials.passphrase || undefined },
-      { algorithm: 'RS256' },
-    );
-    headers['Authorization'] = `Bearer ${keypairJwt}`;
-    headers['X-Snowflake-Authorization-Token-Type'] = 'KEYPAIR_JWT';
-  }
-
-  const effectiveRole = role || connWithCreds.default_role;
-  if (effectiveRole) headers['X-Snowflake-Role'] = effectiveRole;
-
-  return { headers, account };
-}
-
-askRoutes.post('/agent-message', async (req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-
-  const sendEvent = (event, data) => {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  };
-
-  let convId = null;
-  let responseText = '';
-
-  try {
-    const { conversationId, content, connectionId, workspaceId, agentFqn: requestedAgentFqn } = req.body;
-    if (!content?.trim()) {
-      sendEvent('error', { error: 'Empty message' });
-      return res.end();
-    }
-
-    if (!workspaceId) {
-      sendEvent('error', { error: 'A workspace is required to start a chat' });
-      return res.end();
-    }
-
-    const workspace = await resolveWorkspace(workspaceId, req.user.id, req.user.role);
-    if (!workspace) {
-      sendEvent('error', { error: 'Workspace not found or access denied' });
-      return res.end();
-    }
-
-    const agents = await resolveWorkspaceAgents(workspaceId);
-    if (!agents.length) {
-      sendEvent('error', { error: 'No agents configured. Add an agent in workspace settings.' });
-      return res.end();
-    }
-
-    const agentFqn = (requestedAgentFqn && agents.includes(requestedAgentFqn))
-      ? requestedAgentFqn
-      : agents[0];
-    const parts = agentFqn.split('.');
-    if (parts.length !== 3) {
-      sendEvent('error', { error: 'Agent FQN must be DATABASE.SCHEMA.AGENT_NAME' });
-      return res.end();
-    }
-    const [database, schema, agentName] = parts;
-
-    const effectiveConnectionId = workspace.connection_id || connectionId;
-    if (!effectiveConnectionId) {
-      sendEvent('error', { error: 'Snowflake connection required' });
-      return res.end();
-    }
-
-    convId = conversationId;
-    if (!convId) {
-      convId = crypto.randomUUID();
-      await query(
-        `INSERT INTO ask_conversations (id, user_id, connection_id, workspace_id, mode, title) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [convId, req.user.id, effectiveConnectionId, workspaceId, 'agent', content.slice(0, 60)],
-      );
-    }
-
-    sendEvent('response.conversation_id', { conversationId: convId });
-
-    const userMsgId = crypto.randomUUID();
-    await query(
-      'INSERT INTO ask_messages (id, conversation_id, role, content) VALUES ($1, $2, $3, $4)',
-      [userMsgId, convId, 'user', encrypt(content)],
-    );
-
-    const msgCount = await query('SELECT COUNT(*) as cnt FROM ask_messages WHERE conversation_id = $1', [convId]);
-    if (parseInt(msgCount.rows[0].cnt || msgCount.rows[0].CNT) <= 1) {
-      await query(`UPDATE ask_conversations SET title = $1, updated_at = ${now()} WHERE id = $2`,
-        [content.slice(0, 80), convId]);
-    }
-
-    const priorMsgsRaw = await query(
-      'SELECT role, content FROM ask_messages WHERE conversation_id = $1 ORDER BY created_at ASC',
-      [convId],
-    );
-    const agentMessages = priorMsgsRaw.rows.map(m => {
-      let c = m.content || '';
-      try { c = decrypt(c); } catch { /* plaintext fallback */ }
-      return { role: m.role, content: [{ type: 'text', text: c }] };
-    });
-
-    sendEvent('response.status', { message: 'Talking to agent...' });
-
-    const { headers: sfHeaders, account } = await buildSnowflakeAgentHeaders(effectiveConnectionId, workspace.role);
-    const agentUrl = `https://${account}.snowflakecomputing.com/api/v2/databases/${encodeURIComponent(database)}/schemas/${encodeURIComponent(schema)}/agents/${encodeURIComponent(agentName)}:run`;
-
-    const sfResponse = await fetch(agentUrl, {
-      method: 'POST',
-      headers: sfHeaders,
-      body: JSON.stringify({ messages: agentMessages, stream: true }),
-    });
-
-    if (!sfResponse.ok) {
-      const errText = await sfResponse.text();
-      console.error(`[Ask Agent] Snowflake returned ${sfResponse.status}:`, errText);
-      sendEvent('error', { error: errText || `Snowflake returned ${sfResponse.status}` });
-      return res.end();
-    }
-
-    // Pipe raw Snowflake SSE through to client (exact same pattern as semantic.js),
-    // but also capture answer text for DB persistence.
-    const reader = sfResponse.body.getReader();
-    const decoder = new TextDecoder();
-
-    req.on('close', () => {
-      try { reader.cancel(); } catch {}
-    });
-
-    // Only capture answer text from these event types for DB persistence
-    const ANSWER_EVENTS = new Set(['response.text.delta', 'response.text', 'response']);
-
-    try {
-      let pendingEventType = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        // Pipe raw SSE to client unmodified (same as dashboard)
-        res.write(chunk);
-
-        // Parse only answer events for persistence — ignore thinking, status, etc.
-        for (const line of chunk.split('\n')) {
-          if (line.startsWith('event: ')) {
-            pendingEventType = line.slice(7).trim();
-          } else if (line.startsWith('data: ') && ANSWER_EVENTS.has(pendingEventType)) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (pendingEventType === 'response.text.delta' && data?.text) {
-                responseText += data.text;
-              } else if (pendingEventType === 'response.text' && data?.text) {
-                responseText = data.text;
-              } else if (pendingEventType === 'response' && data?.content) {
-                const txt = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
-                if (txt) responseText = txt;
-              }
-            } catch { /* skip */ }
-          } else if (line === '') {
-            pendingEventType = '';
-          }
-        }
-      }
-    } catch (streamErr) {
-      console.error('[Ask Agent] stream error:', streamErr.message);
-      res.write(`event: error\ndata: ${JSON.stringify({ error: streamErr.message })}\n\n`);
-    }
-
-    // Save assistant response after stream completes
-    try {
-      if (responseText) {
-        await query(
-          'INSERT INTO ask_messages (id, conversation_id, role, content) VALUES ($1, $2, $3, $4)',
-          [crypto.randomUUID(), convId, 'assistant', encrypt(responseText)],
-        );
-      }
-      await query(`UPDATE ask_conversations SET updated_at = ${now()} WHERE id = $1`, [convId]);
-    } catch (saveErr) {
-      console.error('[Ask Agent] Failed to save assistant message:', saveErr);
-    }
-
-  } catch (err) {
-    console.error('[Ask Agent] Error:', err);
-    if (convId) {
-      try {
-        await query(
-          'INSERT INTO ask_messages (id, conversation_id, role, content) VALUES ($1, $2, $3, $4)',
-          [crypto.randomUUID(), convId, 'assistant', encrypt(responseText || `Error: ${err.message}`)],
-        );
-      } catch { /* ignore */ }
     }
     sendEvent('response.text', { text: `Error: ${err.message}` });
     sendEvent('error', { error: err.message });

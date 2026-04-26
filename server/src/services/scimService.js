@@ -16,15 +16,15 @@ export function isEnabled() {
 export function validateToken(authHeader) {
   if (!isEnabled()) return false;
   const bearerToken = configStore.get('SCIM_BEARER_TOKEN');
-  if (!bearerToken || bearerToken === 'generate-a-secure-random-token-here') {
+  if (!bearerToken) {
     throw new Error('SCIM_BEARER_TOKEN is not configured');
   }
   if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
   const token = authHeader.slice(7);
-  return crypto.timingSafeEqual(
-    Buffer.from(token),
-    Buffer.from(bearerToken)
-  );
+  const a = Buffer.from(token);
+  const b = Buffer.from(bearerToken);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 function toScimUser(user, baseUrl) {
@@ -49,11 +49,11 @@ function toScimUser(user, baseUrl) {
   };
 }
 
-function toScimGroup(group, members, baseUrl) {
+function toScimGroup(workspace, members, baseUrl) {
   return {
     schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-    id: group.id,
-    displayName: group.name,
+    id: workspace.id,
+    displayName: workspace.name,
     members: members.map(m => ({
       value: m.user_id,
       display: m.username || m.display_name,
@@ -61,47 +61,50 @@ function toScimGroup(group, members, baseUrl) {
     })),
     meta: {
       resourceType: 'Group',
-      created: group.created_at,
-      lastModified: group.updated_at || group.created_at,
-      location: `${baseUrl}/scim/v2/Groups/${group.id}`,
+      created: workspace.created_at,
+      lastModified: workspace.updated_at || workspace.created_at,
+      location: `${baseUrl}/scim/v2/Groups/${workspace.id}`,
     },
   };
 }
 
 export async function listUsers(filter, startIndex = 1, count = 100, baseUrl = '') {
-  let sql = 'SELECT * FROM users WHERE auth_provider = $1';
-  const params = ['saml'];
+  let whereSql = ' WHERE 1=1';
+  const params = [];
 
   if (filter) {
     const match = filter.match(/^userName\s+eq\s+"([^"]+)"$/i);
     if (match) {
-      sql += ' AND username = $2';
+      whereSql += ` AND username = $${params.length + 1}`;
       params.push(match[1]);
     }
     const emailMatch = filter.match(/^emails\.value\s+eq\s+"([^"]+)"$/i);
     if (emailMatch) {
-      sql += ' AND email = $2';
+      whereSql += ` AND email = $${params.length + 1}`;
       params.push(emailMatch[1]);
     }
     const extMatch = filter.match(/^externalId\s+eq\s+"([^"]+)"$/i);
     if (extMatch) {
-      sql += ' AND external_id = $2';
+      whereSql += ` AND external_id = $${params.length + 1}`;
       params.push(extMatch[1]);
     }
   }
 
-  sql += ' ORDER BY created_at ASC';
+  const countResult = await query(`SELECT COUNT(*)::int AS total FROM users${whereSql}`, params);
+  const totalResults = countResult.rows[0]?.total || 0;
 
-  const result = await query(sql, params);
-  const users = result.rows;
-  const sliced = users.slice(startIndex - 1, startIndex - 1 + count);
+  const offset = Math.max(startIndex - 1, 0);
+  const limitParam = params.length + 1;
+  const offsetParam = params.length + 2;
+  const dataSql = `SELECT * FROM users${whereSql} ORDER BY created_at ASC LIMIT $${limitParam} OFFSET $${offsetParam}`;
+  const result = await query(dataSql, [...params, count, offset]);
 
   return {
     schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
-    totalResults: users.length,
+    totalResults,
     startIndex,
-    itemsPerPage: sliced.length,
-    Resources: sliced.map(u => toScimUser(u, baseUrl)),
+    itemsPerPage: result.rows.length,
+    Resources: result.rows.map(u => toScimUser(u, baseUrl)),
   };
 }
 
@@ -120,11 +123,22 @@ export async function createUser(scimUser, baseUrl = '') {
   const scimRole = scimUser.roles?.[0]?.value;
   const role = ROLE_MAP[scimRole?.toLowerCase()] || 'viewer';
 
-  const existing = await query('SELECT id FROM users WHERE username = $1 OR email = $2', [username, email]);
+  // Check if user already exists — adopt them into SCIM management
+  const existing = await query('SELECT * FROM users WHERE username = $1 OR email = $2', [username, email]);
   if (existing.rows.length > 0) {
-    const err = new Error(`User ${username} already exists`);
-    err.status = 409;
-    throw err;
+    const user = existing.rows[0];
+    if (user.scim_managed) {
+      const err = new Error(`User ${username} is already SCIM-managed`);
+      err.status = 409;
+      throw err;
+    }
+    // Adopt: convert existing local user to SCIM-managed, preserve their data
+    await query(
+      `UPDATE users SET auth_provider = 'saml', scim_managed = true, external_id = $1, is_active = $2, updated_at = ${now()} WHERE id = $3`,
+      [externalId, active, user.id]
+    );
+    const adopted = await query('SELECT * FROM users WHERE id = $1', [user.id]);
+    return toScimUser(adopted.rows[0], baseUrl);
   }
 
   const id = crypto.randomUUID();
@@ -143,8 +157,9 @@ export async function updateUser(id, scimUser, baseUrl = '') {
   if (!existing.rows[0]) return null;
 
   const user = existing.rows[0];
-  if (user.auth_provider !== 'saml' && !user.scim_managed) {
-    const err = new Error('Cannot modify a non-SCIM user via SCIM');
+
+  if (user.role === 'owner') {
+    const err = new Error('The owner account cannot be modified via SCIM');
     err.status = 403;
     throw err;
   }
@@ -158,7 +173,7 @@ export async function updateUser(id, scimUser, baseUrl = '') {
   const externalId = scimUser.externalId || user.external_id;
 
   await query(
-    `UPDATE users SET username = $1, email = $2, display_name = $3, role = $4, is_active = $5, external_id = $6, updated_at = ${now()} WHERE id = $7`,
+    `UPDATE users SET username = $1, email = $2, display_name = $3, role = $4, is_active = $5, external_id = $6, auth_provider = 'saml', scim_managed = true, updated_at = ${now()} WHERE id = $7`,
     [username, email, displayName, role, active, externalId, id]
   );
 
@@ -172,23 +187,34 @@ export async function patchUser(id, operations, baseUrl = '') {
 
   const user = existing.rows[0];
 
+  if (user.role === 'owner') {
+    const err = new Error('The owner account cannot be modified via SCIM');
+    err.status = 403;
+    throw err;
+  }
+
+  // Auto-adopt into SCIM management on first patch
+  if (!user.scim_managed) {
+    await query(`UPDATE users SET auth_provider = 'saml', scim_managed = true, updated_at = ${now()} WHERE id = $1`, [id]);
+  }
+
   for (const op of operations) {
     const path = op.path?.toLowerCase();
     const value = op.value;
 
     if (op.op === 'Replace' || op.op === 'replace') {
       if (path === 'active') {
-        await query('UPDATE users SET is_active = $1 WHERE id = $2', [value, id]);
+        await query(`UPDATE users SET is_active = $1, updated_at = ${now()} WHERE id = $2`, [value, id]);
       } else if (path === 'username' || path === 'userName') {
-        await query('UPDATE users SET username = $1 WHERE id = $2', [value, id]);
+        await query(`UPDATE users SET username = $1, updated_at = ${now()} WHERE id = $2`, [value, id]);
       } else if (path === 'displayname' || path === 'displayName') {
-        await query('UPDATE users SET display_name = $1 WHERE id = $2', [value, id]);
+        await query(`UPDATE users SET display_name = $1, updated_at = ${now()} WHERE id = $2`, [value, id]);
       } else if (path === 'emails[type eq "work"].value' || path === 'emails') {
         const email = typeof value === 'string' ? value : value?.[0]?.value;
-        if (email) await query('UPDATE users SET email = $1 WHERE id = $2', [email, id]);
+        if (email) await query(`UPDATE users SET email = $1, updated_at = ${now()} WHERE id = $2`, [email, id]);
       } else if (!path && typeof value === 'object') {
         if (value.active !== undefined) {
-          await query('UPDATE users SET is_active = $1 WHERE id = $2', [value.active, id]);
+          await query(`UPDATE users SET is_active = $1, updated_at = ${now()} WHERE id = $2`, [value.active, id]);
         }
       }
     }
@@ -202,12 +228,18 @@ export async function deleteUser(id) {
   const existing = await query('SELECT * FROM users WHERE id = $1', [id]);
   if (!existing.rows[0]) return false;
 
-  await query('UPDATE users SET is_active = false WHERE id = $1', [id]);
+  if (existing.rows[0].role === 'owner') {
+    const err = new Error('The owner account cannot be deleted via SCIM');
+    err.status = 403;
+    throw err;
+  }
+
+  await query(`UPDATE users SET is_active = false, updated_at = ${now()} WHERE id = $1`, [id]);
   return true;
 }
 
 export async function listGroups(filter, startIndex = 1, count = 100, baseUrl = '') {
-  let sql = 'SELECT * FROM user_groups';
+  let sql = 'SELECT * FROM workspaces';
   const params = [];
 
   if (filter) {
@@ -221,21 +253,21 @@ export async function listGroups(filter, startIndex = 1, count = 100, baseUrl = 
   sql += ' ORDER BY created_at ASC';
 
   const result = await query(sql, params);
-  const groups = result.rows;
-  const sliced = groups.slice(startIndex - 1, startIndex - 1 + count);
+  const workspaces = result.rows;
+  const sliced = workspaces.slice(startIndex - 1, startIndex - 1 + count);
 
   const resources = [];
-  for (const group of sliced) {
+  for (const ws of sliced) {
     const membersResult = await query(
-      'SELECT gm.user_id, u.username, u.display_name FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id = $1',
-      [group.id]
+      'SELECT wm.user_id, u.username, u.display_name FROM workspace_members wm JOIN users u ON u.id = wm.user_id WHERE wm.workspace_id = $1',
+      [ws.id]
     );
-    resources.push(toScimGroup(group, membersResult.rows, baseUrl));
+    resources.push(toScimGroup(ws, membersResult.rows, baseUrl));
   }
 
   return {
     schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
-    totalResults: groups.length,
+    totalResults: workspaces.length,
     startIndex,
     itemsPerPage: sliced.length,
     Resources: resources,
@@ -243,11 +275,11 @@ export async function listGroups(filter, startIndex = 1, count = 100, baseUrl = 
 }
 
 export async function getGroup(id, baseUrl = '') {
-  const result = await query('SELECT * FROM user_groups WHERE id = $1', [id]);
+  const result = await query('SELECT * FROM workspaces WHERE id = $1', [id]);
   if (!result.rows[0]) return null;
 
   const membersResult = await query(
-    'SELECT gm.user_id, u.username, u.display_name FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id = $1',
+    'SELECT wm.user_id, u.username, u.display_name FROM workspace_members wm JOIN users u ON u.id = wm.user_id WHERE wm.workspace_id = $1',
     [id]
   );
 
@@ -262,9 +294,9 @@ export async function createGroup(scimGroup, baseUrl = '') {
     throw err;
   }
 
-  const existing = await query('SELECT id FROM user_groups WHERE name = $1', [name]);
+  const existing = await query('SELECT id FROM workspaces WHERE name = $1', [name]);
   if (existing.rows.length > 0) {
-    const err = new Error(`Group ${name} already exists`);
+    const err = new Error(`Workspace "${name}" already exists`);
     err.status = 409;
     throw err;
   }
@@ -273,15 +305,15 @@ export async function createGroup(scimGroup, baseUrl = '') {
   const systemUserId = (await query("SELECT id FROM users WHERE role = 'owner' LIMIT 1")).rows[0]?.id || id;
 
   await query(
-    'INSERT INTO user_groups (id, name, description, created_by) VALUES ($1, $2, $3, $4)',
-    [id, name, scimGroup.description || `SCIM-provisioned group: ${name}`, systemUserId]
+    'INSERT INTO workspaces (id, name, description, created_by) VALUES ($1, $2, $3, $4)',
+    [id, name, scimGroup.description || `SCIM-provisioned workspace: ${name}`, systemUserId]
   );
 
   if (scimGroup.members?.length > 0) {
     for (const member of scimGroup.members) {
       const memberId = crypto.randomUUID();
       await query(
-        'INSERT INTO group_members (id, group_id, user_id, added_by) VALUES ($1, $2, $3, $4)',
+        'INSERT INTO workspace_members (id, workspace_id, user_id, added_by) VALUES ($1, $2, $3, $4)',
         [memberId, id, member.value, systemUserId]
       );
     }
@@ -291,20 +323,21 @@ export async function createGroup(scimGroup, baseUrl = '') {
 }
 
 export async function updateGroup(id, scimGroup, baseUrl = '') {
-  const existing = await query('SELECT * FROM user_groups WHERE id = $1', [id]);
+  const existing = await query('SELECT * FROM workspaces WHERE id = $1', [id]);
   if (!existing.rows[0]) return null;
 
   const name = scimGroup.displayName || existing.rows[0].name;
-  await query(`UPDATE user_groups SET name = $1, updated_at = ${now()} WHERE id = $2`, [name, id]);
+  await query(`UPDATE workspaces SET name = $1, updated_at = ${now()} WHERE id = $2`, [name, id]);
 
-  await query('DELETE FROM group_members WHERE group_id = $1', [id]);
+  // Full replace: clear existing members and re-add
+  await query('DELETE FROM workspace_members WHERE workspace_id = $1', [id]);
 
   if (scimGroup.members?.length > 0) {
     const systemUserId = (await query("SELECT id FROM users WHERE role = 'owner' LIMIT 1")).rows[0]?.id;
     for (const member of scimGroup.members) {
       const memberId = crypto.randomUUID();
       await query(
-        'INSERT INTO group_members (id, group_id, user_id, added_by) VALUES ($1, $2, $3, $4)',
+        'INSERT INTO workspace_members (id, workspace_id, user_id, added_by) VALUES ($1, $2, $3, $4)',
         [memberId, id, member.value, systemUserId]
       );
     }
@@ -314,7 +347,7 @@ export async function updateGroup(id, scimGroup, baseUrl = '') {
 }
 
 export async function patchGroup(id, operations, baseUrl = '') {
-  const existing = await query('SELECT * FROM user_groups WHERE id = $1', [id]);
+  const existing = await query('SELECT * FROM workspaces WHERE id = $1', [id]);
   if (!existing.rows[0]) return null;
 
   const systemUserId = (await query("SELECT id FROM users WHERE role = 'owner' LIMIT 1")).rows[0]?.id;
@@ -327,13 +360,13 @@ export async function patchGroup(id, operations, baseUrl = '') {
       const members = Array.isArray(op.value) ? op.value : [op.value];
       for (const member of members) {
         const check = await query(
-          'SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2',
+          'SELECT id FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
           [id, member.value]
         );
         if (check.rows.length === 0) {
           const memberId = crypto.randomUUID();
           await query(
-            'INSERT INTO group_members (id, group_id, user_id, added_by) VALUES ($1, $2, $3, $4)',
+            'INSERT INTO workspace_members (id, workspace_id, user_id, added_by) VALUES ($1, $2, $3, $4)',
             [memberId, id, member.value, systemUserId]
           );
         }
@@ -341,10 +374,10 @@ export async function patchGroup(id, operations, baseUrl = '') {
     } else if (action === 'remove' && path?.startsWith('members[')) {
       const valueMatch = path.match(/members\[value\s+eq\s+"([^"]+)"\]/i);
       if (valueMatch) {
-        await query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [id, valueMatch[1]]);
+        await query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [id, valueMatch[1]]);
       }
     } else if (action === 'replace' && path === 'displayname') {
-      await query(`UPDATE user_groups SET name = $1, updated_at = ${now()} WHERE id = $2`, [op.value, id]);
+      await query(`UPDATE workspaces SET name = $1, updated_at = ${now()} WHERE id = $2`, [op.value, id]);
     }
   }
 
@@ -352,11 +385,11 @@ export async function patchGroup(id, operations, baseUrl = '') {
 }
 
 export async function deleteGroup(id) {
-  const existing = await query('SELECT id FROM user_groups WHERE id = $1', [id]);
+  const existing = await query('SELECT id FROM workspaces WHERE id = $1', [id]);
   if (!existing.rows[0]) return false;
 
-  await query('DELETE FROM group_members WHERE group_id = $1', [id]);
-  await query('DELETE FROM user_groups WHERE id = $1', [id]);
+  await query('DELETE FROM workspace_members WHERE workspace_id = $1', [id]);
+  await query('DELETE FROM workspaces WHERE id = $1', [id]);
   return true;
 }
 

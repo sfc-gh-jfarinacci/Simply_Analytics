@@ -8,6 +8,7 @@ import { createColorSchemeSlice } from './slices/colorSchemeSlice';
 import { createAskSlice } from './slices/askSlice';
 import { createAdminSlice } from './slices/adminSlice';
 import { createWorkspaceSlice } from './slices/workspaceSlice';
+import { createConsumptionSlice } from './slices/consumptionSlice';
 
 export const useAppStore = create((...a) => ({
   ...createAuthSlice(...a),
@@ -19,4 +20,5 @@ export const useAppStore = create((...a) => ({
   ...createAskSlice(...a),
   ...createAdminSlice(...a),
   ...createWorkspaceSlice(...a),
+  ...createConsumptionSlice(...a),
 }));

@@ -9,23 +9,29 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
+import compression from 'compression';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
+import { createRequire } from 'module';
 import configStore from './config/configStore.js';
-import { getMasterKeyHex } from './config/configEncryption.js';
 import { initHotReload } from './config/hotReload.js';
 
+const _require = createRequire(import.meta.url);
+const APP_VERSION = _require('../package.json').version;
+import { bootstrapRoutes, setupAuthMiddleware } from './routes/bootstrap.js';
+import { emergencyRoutes } from './routes/emergency.js';
+import { ensureLatestSchema } from './db/schemaPatches.js';
+
 const app = express();
-
-// ---------------------------------------------------------------------------
-// Global middleware (always active regardless of setup state)
-// ---------------------------------------------------------------------------
-
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// ---------------------------------------------------------------------------
+// Global middleware
+// ---------------------------------------------------------------------------
+
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: NODE_ENV === 'production', crossOriginEmbedderPolicy: false }));
 
@@ -47,7 +53,8 @@ app.use(rateLimit({
   skip: (req) => req.path === '/api/v1/health' || req.path.startsWith('/api/v1/setup'),
 }));
 
-app.use(express.json({ limit: '50mb' }));
+app.use(compression());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
@@ -57,249 +64,11 @@ app.use((req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
-// Bootstrap auth — available before full setup
-// Hardcoded admin/admin123 credentials, disabled once a real owner is created.
+// Bootstrap & emergency auth (available before full setup)
 // ---------------------------------------------------------------------------
 
-const BOOTSTRAP_USER = 'admin';
-const BOOTSTRAP_PASS = 'admin123';
-
-function getBootstrapSecret() {
-  return crypto.createHash('sha256').update('bootstrap:' + getMasterKeyHex()).digest('hex');
-}
-
-function setupAuthMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  try {
-    const decoded = jwt.verify(token, getBootstrapSecret());
-    if (decoded.role === 'bootstrap_admin') {
-      req.user = decoded;
-      return next();
-    }
-  } catch (_) {}
-
-  if (configStore.isConfigured()) {
-    return res.status(403).json({ error: 'Setup already complete' });
-  }
-  return res.status(401).json({ error: 'Invalid or expired token' });
-}
-
-// Bootstrap login — only active when app is unconfigured
-app.post('/api/v1/auth/login', (req, res, next) => {
-  if (configStore.isConfigured()) return next();
-
-  const { username, password } = req.body;
-  if (username === BOOTSTRAP_USER && password === BOOTSTRAP_PASS) {
-    const token = jwt.sign(
-      { userId: 'bootstrap', username: BOOTSTRAP_USER, role: 'bootstrap_admin' },
-      getBootstrapSecret(),
-      { expiresIn: '4h' }
-    );
-    return res.json({
-      success: true,
-      user: { id: 'bootstrap', username: BOOTSTRAP_USER, email: '', role: 'bootstrap_admin' },
-      token,
-    });
-  }
-  return res.status(401).json({ success: false, error: 'Invalid credentials' });
-});
-
-// Bootstrap token validation
-app.get('/api/v1/auth/validate', (req, res, next) => {
-  if (configStore.isConfigured()) return next();
-
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.json({ valid: false });
-  try {
-    const decoded = jwt.verify(token, getBootstrapSecret());
-    return res.json({ valid: true, user: { id: decoded.userId, username: decoded.username, role: decoded.role } });
-  } catch (_) {
-    return res.json({ valid: false });
-  }
-});
-
-// Bootstrap logout (no-op — stateless JWT)
-app.post('/api/v1/auth/logout', (req, res, next) => {
-  if (configStore.isConfigured()) return next();
-  return res.json({ success: true });
-});
-
-// Bootstrap roles
-app.get('/api/v1/auth/roles', (req, res, next) => {
-  if (configStore.isConfigured()) return next();
-  return res.json({ roles: ['bootstrap_admin'] });
-});
-
-// ---------------------------------------------------------------------------
-// Emergency login — when DB is unreachable, let the owner authenticate
-// using the master encryption key they saved during initial setup.
-// No database access needed.
-// ---------------------------------------------------------------------------
-
-app.post('/api/v1/auth/emergency-login', (req, res) => {
-  if (!configStore.isConfigured()) {
-    return res.status(400).json({ success: false, error: 'App is not configured yet' });
-  }
-
-  const { masterKey } = req.body;
-  if (!masterKey) {
-    return res.status(400).json({ success: false, error: 'Master encryption key is required' });
-  }
-
-  if (!configStore.verifyMasterKey(masterKey)) {
-    return res.status(401).json({ success: false, error: 'Invalid master key' });
-  }
-
-  const jwtSecret = configStore.get('JWT_SECRET');
-  if (!jwtSecret) {
-    return res.status(500).json({ success: false, error: 'JWT secret not configured' });
-  }
-
-  const token = jwt.sign(
-    {
-      userId: 'emergency',
-      username: 'owner',
-      role: 'owner',
-      emergencyMode: true,
-    },
-    jwtSecret,
-    { expiresIn: '2h' }
-  );
-
-  console.warn('[emergency-login] Owner authenticated via master key (database may be unreachable)');
-
-  res.json({
-    success: true,
-    token,
-    user: {
-      id: 'emergency',
-      username: 'owner',
-      role: 'owner',
-    },
-    emergencyMode: true,
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Emergency helpers — check DB health and create owner when DB is up but empty
-// ---------------------------------------------------------------------------
-
-function requireEmergencyJwt(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const decoded = jwt.verify(token, configStore.get('JWT_SECRET'));
-    if (decoded.emergencyMode) { req.user = decoded; return next(); }
-  } catch (_) {}
-  return res.status(403).json({ error: 'Emergency authentication required' });
-}
-
-app.get('/api/v1/auth/db-status', requireEmergencyJwt, async (_req, res) => {
-  const pg = await import('pg');
-  const pool = new pg.default.Pool({
-    host: configStore.get('POSTGRES_HOST'),
-    port: parseInt(configStore.get('POSTGRES_PORT') || '5432'),
-    database: configStore.get('POSTGRES_DB'),
-    user: configStore.get('POSTGRES_USER'),
-    password: configStore.get('POSTGRES_PASSWORD'),
-    connectionTimeoutMillis: 5000,
-  });
-
-  try {
-    await pool.query('SELECT 1');
-    try {
-      const userCount = await pool.query('SELECT COUNT(*)::int AS count FROM users');
-      const ownerRow = await pool.query(
-        `SELECT id, username, email FROM users WHERE role = 'owner' LIMIT 1`
-      );
-      res.json({
-        dbReachable: true,
-        userCount: userCount.rows[0].count,
-        tablesExist: true,
-        owner: ownerRow.rows[0] || null,
-      });
-    } catch (_) {
-      res.json({ dbReachable: true, userCount: 0, tablesExist: false, owner: null });
-    }
-  } catch (err) {
-    res.json({ dbReachable: false, userCount: 0, tablesExist: false, owner: null, error: err.message });
-  } finally {
-    await pool.end().catch(() => {});
-  }
-});
-
-app.post('/api/v1/auth/emergency-create-owner', requireEmergencyJwt, async (req, res) => {
-  const { username, email, password, displayName } = req.body;
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'username, email, and password are required' });
-  }
-
-  const { validatePasswordStrength } = await import('./services/userService.js');
-  const pwErrors = validatePasswordStrength(password);
-  if (pwErrors.length > 0) {
-    return res.status(400).json({ error: `Password must have: ${pwErrors.join(', ')}` });
-  }
-
-  const pg = await import('pg');
-  const pool = new pg.default.Pool({
-    host: configStore.get('POSTGRES_HOST'),
-    port: parseInt(configStore.get('POSTGRES_PORT') || '5432'),
-    database: configStore.get('POSTGRES_DB'),
-    user: configStore.get('POSTGRES_USER'),
-    password: configStore.get('POSTGRES_PASSWORD'),
-  });
-
-  try {
-    const { runPostgresMigration, createOwnerAccount } = await import('./services/migrationRunner.js');
-    const bcrypt = await import('bcryptjs');
-
-    // Ensure tables exist — run full migration if needed
-    const tableCheck = await pool.query(
-      `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') AS exists`
-    );
-    if (!tableCheck.rows[0].exists) {
-      const dbConfig = {
-        host: configStore.get('POSTGRES_HOST'),
-        port: configStore.get('POSTGRES_PORT') || '5432',
-        database: configStore.get('POSTGRES_DB'),
-        user: configStore.get('POSTGRES_USER'),
-        password: configStore.get('POSTGRES_PASSWORD'),
-      };
-      const migResult = await runPostgresMigration(dbConfig, console.log, { skipAdminUser: true });
-      if (!migResult.success) {
-        return res.status(500).json({ error: 'Failed to create database tables' });
-      }
-    }
-
-    // Check if an owner already exists
-    const existingOwner = await pool.query(`SELECT id FROM users WHERE role = 'owner' LIMIT 1`);
-
-    if (existingOwner.rows.length > 0) {
-      // Reset existing owner credentials
-      const passwordHash = await bcrypt.default.hash(password, 10);
-      const updated = await pool.query(
-        `UPDATE users SET username = $1, email = $2, password_hash = $3, display_name = $4,
-         account_locked = false, account_locked_reason = NULL, failed_login_attempts = 0,
-         is_active = true
-         WHERE id = $5
-         RETURNING id, username, email, display_name, role`,
-        [username, email, passwordHash, displayName || username, existingOwner.rows[0].id]
-      );
-      return res.json({ success: true, user: updated.rows[0], action: 'reset' });
-    }
-
-    // No owner — create one
-    const owner = await createOwnerAccount(pool, { username, email, password, displayName });
-    res.json({ success: true, user: owner, action: 'created' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  } finally {
-    await pool.end().catch(() => {});
-  }
-});
+app.use('/api/v1/auth', bootstrapRoutes);
+app.use('/api/v1/auth', emergencyRoutes);
 
 // ---------------------------------------------------------------------------
 // Health & setup-status endpoints (always available)
@@ -307,11 +76,33 @@ app.post('/api/v1/auth/emergency-create-owner', requireEmergencyJwt, async (req,
 
 app.get('/api/v1/health', async (_req, res) => {
   let activeSessions = 0;
+  let pgOk = false;
+  let redisOk = false;
+
   try {
     const authMod = await import('./middleware/auth.js');
     activeSessions = authMod.getActiveSessionCount();
   } catch (_) {}
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), activeSessions });
+
+  try {
+    const { test: testDb } = await import('./db/db.js');
+    pgOk = await testDb();
+  } catch (_) {}
+
+  try {
+    const { isRedisActive } = await import('./db/redisSessionStore.js');
+    redisOk = isRedisActive();
+  } catch (_) {}
+
+  const status = pgOk ? 'ok' : 'degraded';
+  const httpCode = pgOk ? 200 : 503;
+  res.status(httpCode).json({
+    status,
+    timestamp: new Date().toISOString(),
+    activeSessions,
+    appVersion: APP_VERSION,
+    services: { postgres: pgOk, redis: redisOk },
+  });
 });
 
 app.get('/api/v1/ready', (_req, res) => res.json({ ready: true }));
@@ -325,7 +116,6 @@ app.get('/api/v1/setup/status', (_req, res) => {
   res.json({ configured: configStore.isConfigured() });
 });
 
-// Setup routes — protected by bootstrap admin auth (dynamic import to avoid loading db.js before config)
 import('./routes/setup.js').then(({ setupRoutes }) => {
   app.use('/api/v1/setup', setupAuthMiddleware, setupRoutes);
 });
@@ -341,7 +131,7 @@ async function mountNormalRoutes() {
   normalRoutesLoaded = true;
 
   const { queryRoutes } = await import('./routes/query.js');
-  const { semanticRoutes } = await import('./routes/semantic.js');
+  const { semanticRoutes } = await import('./routes/semantic/index.js');
   const { dashboardRoutes } = await import('./routes/dashboard.js');
   const { authRoutes } = await import('./routes/auth.js');
   const { twoFactorRoutes } = await import('./routes/twoFactor.js');
@@ -353,20 +143,42 @@ async function mountNormalRoutes() {
   const { dashboardAiRoutes } = await import('./routes/dashboardAi.js');
   const { askRoutes, askPublicRoutes } = await import('./routes/ask.js');
   const { workspaceRoutes } = await import('./routes/workspaces.js');
+  const { endpointRoutes, pipePublicRoutes, apiKeyRoutes } = await import('./routes/endpoints.js');
+
+  // Initialize Redis and share the client with cache and rate-limit layers
+  try {
+    const redisMod = await import('./db/redisSessionStore.js');
+    await redisMod.initRedis();
+    const redisClient = redisMod.getRedisClient();
+    if (redisClient) {
+      const { attachRedis: attachCacheRedis } = await import('./services/responseCache.js');
+      const { attachRedis: attachRlRedis } = await import('./middleware/pipeRateLimit.js');
+      attachCacheRedis(redisClient);
+      attachRlRedis(redisClient);
+      console.log('[server] Redis shared with response cache and pipe rate limiter');
+    }
+  } catch (_) {}
   const { groupRoutes } = await import('./routes/groups.js');
+  const { platformModelRoutes } = await import('./routes/platformModels.js');
+  const { consumptionRoutes } = await import('./routes/consumption.js');
 
   const { authMiddleware, optionalAuthMiddleware } = await import('./middleware/auth.js');
   const { adminRoutes } = await import('./routes/admin.js');
 
   app.use('/api/v1/admin', authMiddleware, adminRoutes);
+  app.use('/api/v1/platform', authMiddleware, platformModelRoutes);
+  app.use('/api/v1/consumption', authMiddleware, consumptionRoutes);
 
   app.use('/api/v1/auth', optionalAuthMiddleware, authRoutes);
   app.use('/api/v1/2fa', optionalAuthMiddleware, twoFactorRoutes);
   app.use('/api/v1/saml', samlRoutes);
   app.use('/api/v1/ask/shared/dashboard', askPublicRoutes);
+  app.use('/api/v1/pipe', pipePublicRoutes);
   app.use('/scim/v2', scimRoutes);
 
   app.use('/api/v1/workspaces', authMiddleware, workspaceRoutes);
+  app.use('/api/v1/workspaces/:id/endpoints', authMiddleware, endpointRoutes);
+  app.use('/api/v1/workspaces/:id/api-keys', authMiddleware, apiKeyRoutes);
   app.use('/api/v1/dashboard', authMiddleware, dashboardRoutes);
   app.use('/api/v1/semantic', authMiddleware, semanticRoutes);
   app.use('/api/v1/query', authMiddleware, queryRoutes);
@@ -389,76 +201,15 @@ async function mountNormalRoutes() {
     });
   });
 
-  console.log('[server] Normal-mode routes mounted');
-}
-
-// ---------------------------------------------------------------------------
-// Lightweight schema patches (run at startup to ensure new tables exist)
-// ---------------------------------------------------------------------------
-
-async function ensureLatestSchema(dbQuery) {
-  const patches = [
-    {
-      name: 'workspace_connections',
-      check: `SELECT 1 FROM information_schema.tables WHERE table_name='workspace_connections'`,
-      apply: [
-        `CREATE TABLE IF NOT EXISTS workspace_connections (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-          connection_id UUID NOT NULL REFERENCES snowflake_connections(id) ON DELETE CASCADE,
-          warehouse VARCHAR(255),
-          role VARCHAR(255),
-          added_by UUID REFERENCES users(id),
-          added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT unique_workspace_connection UNIQUE (workspace_id, connection_id)
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_workspace_connections_ws ON workspace_connections(workspace_id)`,
-      ],
-    },
-    {
-      name: 'users.default_workspace_id',
-      check: `SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='default_workspace_id'`,
-      apply: [
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS default_workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL`,
-      ],
-    },
-    {
-      name: 'workspace_semantic_views.workspace_connection_id',
-      check: `SELECT 1 FROM information_schema.columns WHERE table_name='workspace_semantic_views' AND column_name='workspace_connection_id'`,
-      apply: [
-        `ALTER TABLE workspace_semantic_views ADD COLUMN workspace_connection_id UUID REFERENCES workspace_connections(id) ON DELETE CASCADE`,
-        `ALTER TABLE workspace_semantic_views DROP CONSTRAINT IF EXISTS unique_ws_semantic_view`,
-        `ALTER TABLE workspace_semantic_views ADD CONSTRAINT unique_ws_conn_semantic_view UNIQUE (workspace_id, workspace_connection_id, semantic_view_fqn)`,
-        `CREATE INDEX IF NOT EXISTS idx_ws_semantic_views_conn ON workspace_semantic_views(workspace_connection_id)`,
-      ],
-    },
-    {
-      name: 'workspace_agents.workspace_connection_id',
-      check: `SELECT 1 FROM information_schema.columns WHERE table_name='workspace_agents' AND column_name='workspace_connection_id'`,
-      apply: [
-        `ALTER TABLE workspace_agents ADD COLUMN workspace_connection_id UUID REFERENCES workspace_connections(id) ON DELETE CASCADE`,
-        `ALTER TABLE workspace_agents DROP CONSTRAINT IF EXISTS unique_ws_agent`,
-        `ALTER TABLE workspace_agents ADD CONSTRAINT unique_ws_conn_agent UNIQUE (workspace_id, workspace_connection_id, agent_fqn)`,
-        `CREATE INDEX IF NOT EXISTS idx_ws_agents_conn ON workspace_agents(workspace_connection_id)`,
-      ],
-    },
-  ];
-
-  for (const patch of patches) {
-    try {
-      const exists = await dbQuery(patch.check);
-      if (exists.rows.length === 0) {
-        for (const sql of patch.apply) {
-          await dbQuery(sql);
-        }
-        console.log(`[schema] Created missing table: ${patch.name}`);
-      }
-    } catch (err) {
-      if (!err.message.includes('already exists')) {
-        console.warn(`[schema] Patch ${patch.name}: ${err.message}`);
-      }
-    }
+  // Start automated backup scheduler
+  try {
+    const { scheduleBackups } = await import('./services/backupService.js');
+    scheduleBackups();
+  } catch (backupErr) {
+    console.warn('[server] Could not start backup scheduler:', backupErr.message);
   }
+
+  console.log('[server] Normal-mode routes mounted');
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +236,6 @@ async function startServer() {
       if (dbConnected) {
         console.log(`${metadataBackend} metadata connection established`);
 
-        // Auto-apply lightweight schema patches for new tables/columns
         try {
           const { query: dbQuery } = await import('./db/db.js');
           await ensureLatestSchema(dbQuery);
@@ -546,9 +296,44 @@ async function startServer() {
     }
   });
 
-  process.on('SIGTERM', () => server.close(() => process.exit(0)));
-  process.on('SIGINT', () => server.close(() => process.exit(0)));
+  server.setTimeout(120_000);
+
+  process.on('SIGTERM', () => gracefulShutdown(server));
+  process.on('SIGINT', () => gracefulShutdown(server));
 }
+
+async function gracefulShutdown(server) {
+  console.log('[server] Graceful shutdown initiated...');
+  server.close(async () => {
+    try {
+      const { close: closeDb } = await import('./db/db.js');
+      await closeDb();
+    } catch (_) {}
+    try {
+      const { closeRedis } = await import('./db/redisSessionStore.js');
+      await closeRedis();
+    } catch (_) {}
+    console.log('[server] Cleanup complete, exiting');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('[server] Forced shutdown after timeout');
+    process.exit(1);
+  }, 10_000);
+}
+
+// ---------------------------------------------------------------------------
+// Crash handlers — log and exit cleanly instead of silent death
+// ---------------------------------------------------------------------------
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION — shutting down:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
 
 startServer();
 
