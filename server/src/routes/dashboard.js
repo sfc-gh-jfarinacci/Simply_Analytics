@@ -275,6 +275,13 @@ dashboardRoutes.post('/', requireMfaForEdit, async (req, res, next) => {
       });
     }
 
+    if (!['owner', 'admin', 'editor'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Only owners, admins, and editors can create dashboards.',
+      });
+    }
+
     const { name, description, connectionId, warehouse, role, visibility, yamlDefinition, semanticViewsReferenced, workspaceId } = req.body;
     
     if (!name || !name.trim()) {

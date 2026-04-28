@@ -14,11 +14,18 @@ export async function buildSnowflakeHeaders(connWithCreds, options = {}) {
     headers['Accept'] = options.accept;
   }
 
+  if (!connWithCreds.credentials) {
+    throw new Error('Connection credentials are missing — cannot authenticate with Snowflake REST API');
+  }
+
   if (connWithCreds.auth_type === 'pat') {
+    if (!connWithCreds.credentials.token) {
+      throw new Error('PAT token is missing from connection credentials');
+    }
     headers['Authorization'] = `Bearer ${connWithCreds.credentials.token}`;
     headers['X-Snowflake-Authorization-Token-Type'] = 'PROGRAMMATIC_ACCESS_TOKEN';
   } else {
-    const account = connWithCreds.account.replace(/\.snowflakecomputing\.com\/?$/, '').toUpperCase();
+    const account = (connWithCreds.account || '').trim().replace(/^https?:\/\//, '').replace(/\.snowflakecomputing\.com\/?$/, '').replace(/\/+$/, '').toUpperCase();
     const user = connWithCreds.username.toUpperCase();
 
     const privateKeyObj = crypto.createPrivateKey({
@@ -49,6 +56,10 @@ export async function buildSnowflakeHeaders(connWithCreds, options = {}) {
 }
 
 export function getAccountUrl(connWithCreds) {
-  const account = connWithCreds.account.replace(/\.snowflakecomputing\.com\/?$/, '');
+  const account = (connWithCreds.account || '')
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\.snowflakecomputing\.com\/?$/, '')
+    .replace(/\/+$/, '');
   return `https://${account}.snowflakecomputing.com`;
 }

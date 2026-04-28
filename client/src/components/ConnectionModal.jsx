@@ -40,7 +40,6 @@ export default function ConnectionModal({
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState(null);
-  const [testLoading, setTestLoading] = useState(false);
 
   const [step, setStep] = useState('credentials');
   const [activeConn, setActiveConn] = useState(null);
@@ -152,40 +151,80 @@ export default function ConnectionModal({
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setTestResult(null);
 
     try {
       const credentials = form.authType === 'pat'
         ? { token: form.token }
         : { privateKey: form.privateKey, passphrase: form.passphrase };
 
+      // For new connections (or edits with new credentials), test before saving
+      const needsTest = !isEdit || form.token || form.privateKey;
+      if (needsTest) {
+        const testRes = await sfConnectionApi.testRaw({
+          account: form.account,
+          username: form.username,
+          authType: form.authType,
+          credentials,
+        });
+
+        if (!testRes.success) {
+          setTestResult(testRes);
+          setError(`Connection failed: ${testRes.error}`);
+          return;
+        }
+
+        if (testRes.roles?.length) {
+          setRoles(testRes.roles);
+        }
+      }
+
+      // Connection verified — now save to database
       const data = {
         name: form.name,
         description: form.description,
         account: form.account,
         username: form.username,
         authType: form.authType,
+        credentials,
       };
-
-      if (form.token || form.privateKey) {
-        data.credentials = credentials;
-      }
 
       let result;
       if (isEdit) {
         result = await sfConnectionApi.update(connection.id, data);
       } else {
-        data.credentials = credentials;
         result = await sfConnectionApi.create(data);
       }
 
       const conn = result.connection || result;
       setActiveConn(conn);
+      const connId = conn.id || (isEdit ? connection.id : null);
 
       if (showConfig) {
-        setStep('config');
         sessionConnId.current = null;
-        const connId = conn.id || (isEdit ? connection.id : null);
-        await openSession(connId);
+        try {
+          const res = await sfConnectionApi.openConfigSession(connId);
+          if (res.roles?.length) setRoles(res.roles);
+          sessionConnId.current = connId;
+        } catch {
+          // Roles already loaded from test
+        }
+
+        setTestResult({ success: true });
+        setStep('config');
+
+        const role = workspaceConnection?.role || '';
+        if (role) {
+          setLoadingWarehouses(true);
+          try {
+            const wRes = await sfConnectionApi.configSessionWarehouses(connId, role);
+            setWarehouses(wRes.warehouses || []);
+          } catch {
+            setWarehouses([]);
+          } finally {
+            setLoadingWarehouses(false);
+          }
+        }
       } else {
         onSaved(conn, {});
       }
@@ -201,20 +240,6 @@ export default function ConnectionModal({
       role: selectedRole,
       warehouse: selectedWarehouse,
     });
-  };
-
-  const handleTest = async () => {
-    if (!isEdit) return;
-    setTestLoading(true);
-    setTestResult(null);
-    try {
-      const result = await sfConnectionApi.test(connection.id);
-      setTestResult(result);
-    } catch (err) {
-      setTestResult({ success: false, error: err.message });
-    } finally {
-      setTestLoading(false);
-    }
   };
 
   // ── Step 2: Role & Warehouse (sustained session) ──
@@ -234,12 +259,10 @@ export default function ConnectionModal({
               </div>
             )}
 
-            {!isEdit && (
-              <div className="conn-config-banner">
-                <FiCheckCircle />
-                <span>Connection <strong>{activeConn?.name}</strong> created successfully.</span>
-              </div>
-            )}
+            <div className="conn-config-banner">
+              <FiCheckCircle />
+              <span>Connection <strong>{activeConn?.name}</strong> {isEdit ? 'verified' : 'created'} successfully.</span>
+            </div>
 
             <p className="conn-config-hint">
               Select the role and warehouse for this connection in the workspace.
@@ -407,24 +430,11 @@ export default function ConnectionModal({
               </>
             )}
 
-            {isEdit && (
+            {testResult && !testResult.success && (
               <div className="conn-test-section">
-                <button
-                  type="button"
-                  className="conn-test-btn"
-                  onClick={handleTest}
-                  disabled={testLoading}
-                >
-                  {testLoading ? <FiLoader className="spinner" /> : <FiRefreshCw />}
-                  Test Connection
-                </button>
-                {testResult && (
-                  <div className={`conn-test-result ${testResult.success ? 'success' : 'error'}`}>
-                    {testResult.success
-                      ? <><FiCheckCircle /> Connected as {testResult.user} with role {testResult.role}</>
-                      : <><FiAlertCircle /> {testResult.error}</>}
-                  </div>
-                )}
+                <div className={`conn-test-result error`}>
+                  <FiAlertCircle /> {testResult.error}
+                </div>
               </div>
             )}
           </div>
@@ -432,8 +442,7 @@ export default function ConnectionModal({
           <div className="conn-modal-footer">
             <button type="button" className="conn-modal-btn conn-btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="conn-modal-btn conn-btn-primary" disabled={saving}>
-              {saving ? <FiLoader className="spinner" /> : <FiArrowRight />}
-              {isEdit ? 'Save & Next' : 'Create & Next'}
+              {saving ? <><FiLoader className="spinner" /> Connecting...</> : <><FiArrowRight /> {isEdit ? 'Save & Connect' : 'Create & Connect'}</>}
             </button>
           </div>
         </form>

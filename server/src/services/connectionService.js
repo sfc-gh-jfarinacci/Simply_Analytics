@@ -109,11 +109,13 @@ export async function createConnection(userId, connectionData) {
   const encryptedCredentials = encryptCredentials(credentials);
   const id = crypto.randomUUID();
 
-  await query(`
+  const result = await query(`
     INSERT INTO snowflake_connections 
       (id, name, description, user_id, account, username, auth_type, 
        credentials_encrypted, default_warehouse, default_role)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING id, name, description, account, username, auth_type,
+              default_warehouse, default_role, created_at
   `, [
     id,
     name,
@@ -126,13 +128,6 @@ export async function createConnection(userId, connectionData) {
     defaultWarehouse || null,
     defaultRole || null,
   ]);
-
-  const result = await query(
-    `SELECT id, name, description, account, username, auth_type,
-            default_warehouse, default_role, created_at
-     FROM snowflake_connections WHERE id = $1`,
-    [id]
-  );
 
   return result.rows[0];
 }
@@ -298,28 +293,24 @@ export async function getSnowflakeResources(connectionId, userId, selectedRole =
     sfConfig.privateKeyPass = connWithCreds.credentials.passphrase;
   }
 
-  const connection = await createSnowflakeConnection(sfConfig);
+  const sessionId = `resources-${userId}`;
 
-  try {
-    const rolesResult = await executeQuery(connection, 'SHOW ROLES');
+  async function fetchResources(conn) {
+    const rolesResult = await executeQuery(conn, 'SHOW ROLES');
     const roles = rolesResult.rows.map(r => r.name);
 
     if (!selectedRole) {
-      return {
-        roles,
-        warehouses: [],
-        semanticViews: [],
-      };
+      return { roles, warehouses: [], semanticViews: [] };
     }
 
-    await executeQuery(connection, `USE ROLE "${selectedRole}"`);
+    await executeQuery(conn, `USE ROLE "${selectedRole}"`);
 
-    const warehousesResult = await executeQuery(connection, 'SHOW WAREHOUSES');
+    const warehousesResult = await executeQuery(conn, 'SHOW WAREHOUSES');
     const warehouses = warehousesResult.rows.map(w => w.name);
 
     let semanticViews = [];
     try {
-      const semanticResult = await executeQuery(connection, 'SHOW SEMANTIC VIEWS');
+      const semanticResult = await executeQuery(conn, 'SHOW SEMANTIC VIEWS');
       semanticViews = semanticResult.rows.map((row) => ({
         name: row.name,
         database: row.database_name,
@@ -331,13 +322,17 @@ export async function getSnowflakeResources(connectionId, userId, selectedRole =
       log('Semantic views query failed (may not have access):', e.message);
     }
 
-    return {
-      roles,
-      warehouses,
-      semanticViews,
-    };
-  } finally {
-    connection.destroy();
+    return { roles, warehouses, semanticViews };
+  }
+
+  let connection = await getDashboardConnection(sessionId, connectionId, sfConfig);
+  try {
+    return await fetchResources(connection);
+  } catch (err) {
+    log('Cached connection failed, retrying with fresh connection:', err.message);
+    clearCachedConnection(sessionId, connectionId);
+    connection = await getDashboardConnection(sessionId, connectionId, sfConfig, { forceNew: true });
+    return await fetchResources(connection);
   }
 }
 
@@ -416,11 +411,17 @@ async function openConfigSessionWithCreds(connWithCreds, sessionId) {
     sfConfig.privateKeyPass = connWithCreds.credentials.passphrase;
   }
 
-  const connection = await getDashboardConnection(sessionId, connWithCreds.id, sfConfig, { forceNew: true });
-  const rolesResult = await executeQuery(connection, 'SHOW ROLES');
-  const roles = rolesResult.rows.map(r => r.name);
-
-  return { roles };
+  let connection = await getDashboardConnection(sessionId, connWithCreds.id, sfConfig);
+  try {
+    const rolesResult = await executeQuery(connection, 'SHOW ROLES');
+    return { roles: rolesResult.rows.map(r => r.name) };
+  } catch (err) {
+    log('Cached connection failed, retrying with fresh connection:', err.message);
+    clearCachedConnection(sessionId, connWithCreds.id);
+    connection = await getDashboardConnection(sessionId, connWithCreds.id, sfConfig, { forceNew: true });
+    const rolesResult = await executeQuery(connection, 'SHOW ROLES');
+    return { roles: rolesResult.rows.map(r => r.name) };
+  }
 }
 
 /**

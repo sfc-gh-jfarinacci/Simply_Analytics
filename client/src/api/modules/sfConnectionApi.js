@@ -59,6 +59,26 @@ export const sfConnectionApi = {
     return safeJson(res, { roles: [], warehouses: [], semanticViews: [] });
   },
 
+  async testRaw({ account, username, authType, credentials }) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 35000);
+    try {
+      const res = await fetchApi('/connections/test-raw', {
+        method: 'POST',
+        body: JSON.stringify({ account, username, authType, credentials }),
+        signal: controller.signal,
+      });
+      return safeJson(res, { success: false, error: 'Connection test failed' });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        return { success: false, error: 'Connection timed out. Check your account identifier and credentials.' };
+      }
+      return { success: false, error: err.message };
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+
   async openConfigSession(connectionId) {
     const res = await fetchApi(`/connections/${connectionId}/config-session`, { method: 'POST' });
     if (!res.ok) {

@@ -483,7 +483,7 @@ const SignInModal = ({ isOpen, onClose }) => {
                   disabled={verifying2FA}
                 >
                   <FiKey />
-                  <span>Use Passkey instead</span>
+                  <span>Use Passkey</span>
                 </button>
               </>
             )}

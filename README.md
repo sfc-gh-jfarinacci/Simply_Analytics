@@ -1,13 +1,12 @@
 <h1 align="center">Simply Analytics</h1>
 
 <p align="center">
-  An open-source analytics platform for Snowflake with drag-and-drop dashboards, 20+ visualization types, AI-powered natural language analytics, published query endpoints, a consumption analytics dashboard, and enterprise security — all deployable through a guided web-based setup wizard.
+  An open-source analytics platform for Snowflake with drag-and-drop dashboards, 20+ visualization types, AI-powered natural language analytics, published query endpoints, a consumption analytics dashboard, and enterprise security — deployed via Docker with a guided web-based setup wizard.
 </p>
 
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#docker-deployment">Docker</a> •
   <a href="#configuration">Configuration</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#testing">Testing</a> •
@@ -107,80 +106,14 @@
 
 ### Prerequisites
 
-- Node.js 18+
+- Docker and Docker Compose
 - A Snowflake account with Semantic Views
 
-### Install
+### Deploy
 
 ```bash
 git clone https://github.com/jfarinacci/Simply-Analytics.git
 cd Simply-Analytics
-npm run install:all
-```
-
-### Option A: Web-Based Setup (Recommended)
-
-Start the application without any configuration — the setup wizard handles everything:
-
-```bash
-npm run dev
-```
-
-1. Open http://localhost:5173
-2. Sign in with the bootstrap credentials: `admin` / `admin123`
-3. Follow the guided wizard:
-   - **Database** — set your PostgreSQL credentials (bundled in Docker, or provide your own for local dev)
-   - **Security** — review auto-generated JWT and encryption keys
-   - **Migrations** — schema creation runs automatically
-   - **Owner** — create your permanent owner account
-4. Download the recovery key file when prompted — store it securely for backup/restore
-5. Sign in with your new owner account
-
-### Option B: Manual Configuration (Local Development)
-
-For local development without Docker, create `server/.env`:
-
-```env
-NODE_ENV=development
-PORT=3001
-
-# PostgreSQL (you must provide your own instance for local dev)
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=your_user
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=simply_analytics
-
-# Auth (generate strong random values)
-JWT_SECRET=your-secret-min-32-characters-long
-JWT_EXPIRY=8h
-CREDENTIALS_ENCRYPTION_KEY=your-encryption-key-32-chars
-
-# CORS
-CORS_ORIGINS=http://localhost:5173
-```
-
-Run migrations and start:
-
-```bash
-cd server && node src/db/migrate-postgres.js
-cd .. && npm run dev
-```
-
-This creates all tables and a default admin user (`admin` / `admin123`).
-
-### Access
-
-- **Frontend** → http://localhost:5173
-- **API** → http://localhost:3001
-
-> Change the default admin password immediately after first login.
-
----
-
-## Docker Deployment
-
-```bash
 docker compose up -d
 ```
 
@@ -193,43 +126,35 @@ This starts four services:
 | `api` | 3001 (internal) | Express API server with encrypted config volume |
 | `client` | 80 | Nginx serving the React SPA + API proxy |
 
-PostgreSQL and Redis are bundled and run as internal services — no external database setup required. Data is persisted across restarts via Docker volumes (`postgres-data`, `redis-data`, `config-data`, `backups-data`). Server configuration is encrypted with a recovery key generated during first-time setup.
+PostgreSQL and Redis are bundled and run as internal services — no external database setup required. Data is persisted across restarts via Docker volumes (`postgres-data`, `redis-data`, `config-data`, `backups-data`).
+
+### First-Time Setup
+
+1. Open http://localhost
+2. Sign in with the bootstrap credentials: `admin` / `admin123`
+3. Follow the guided wizard:
+   - **Database** — set your PostgreSQL credentials for the bundled database
+   - **Security** — review auto-generated JWT and encryption keys
+   - **Migrations** — schema creation runs automatically
+   - **Owner** — create your permanent owner account
+4. Download the recovery key file when prompted — store it securely for backup/restore
+5. Sign in with your new owner account
+
+> Change the default admin password immediately after first login.
 
 ---
 
 ## Configuration
 
+All configuration is managed through the web-based setup wizard and admin panel — no environment variables or config files to manage.
+
 ### Encrypted Config Store
 
-When using the web-based setup wizard, all configuration is stored in an AES-256-GCM encrypted file (`data/config.json`). The recovery key is:
-
-1. Read from the `MASTER_KEY` environment variable, or
-2. Read from a file at `MASTER_KEY_PATH`, or
-3. Auto-generated and stored at `data/.master-key`
-
-During setup, a recovery key file is generated for download. Store it securely — it is required for backup/restore and emergency access.
-
-### Environment Variables (Manual Mode)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_ENV` | `development` or `production` | `development` |
-| `PORT` | API server port | `3001` |
-| `POSTGRES_HOST` | PostgreSQL host | `localhost` |
-| `POSTGRES_PORT` | PostgreSQL port | `5432` |
-| `POSTGRES_USER` | PostgreSQL username | — |
-| `POSTGRES_PASSWORD` | PostgreSQL password | — |
-| `POSTGRES_DB` | PostgreSQL database | — |
-| `JWT_SECRET` | JWT signing secret (min 32 chars) | — |
-| `JWT_EXPIRY` | Token expiry duration | `8h` |
-| `CREDENTIALS_ENCRYPTION_KEY` | AES-256 key for credential encryption | — |
-| `CORS_ORIGINS` | Comma-separated allowed origins | — |
-| `SESSION_TIMEOUT_MINUTES` | Inactivity timeout | `20` |
-| `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
+Server configuration is stored in an AES-256-GCM encrypted file (`data/config.json`). During setup, a recovery key file is generated for download. Store it securely — it is required for backup/restore and emergency access.
 
 ### SSO & SCIM (Optional)
 
-SAML SSO and SCIM provisioning are configured from the **Admin Panel > SSO & Provisioning** tab — no environment variables required. The SCIM bearer token is auto-generated by the application and displayed for you to copy into your IdP configuration.
+SAML SSO and SCIM provisioning are configured from the **Admin Panel > SSO & Provisioning** tab. The SCIM bearer token is auto-generated by the application and displayed for you to copy into your IdP configuration.
 
 ---
 

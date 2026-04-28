@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import connectionService from '../services/connectionService.js';
-import { clearCachedConnection, closeDashboardConnection, getConnectionCacheStats, forceDestroyAllForConnection } from '../db/dashboardSessionManager.js';
+import { createConnection as createSnowflakeConnection, executeQuery, clearCachedConnection, closeDashboardConnection, getConnectionCacheStats, forceDestroyAllForConnection } from '../db/dashboardSessionManager.js';
 
 // Verbose logging toggle
 const VERBOSE = process.env.VERBOSE_LOGS === 'true';
@@ -26,6 +26,66 @@ connectionRoutes.get('/', async (req, res) => {
   } catch (error) {
     console.error('Get connections error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/connections/test-raw
+ * Test Snowflake credentials without saving to the database.
+ * Body: { account, username, authType, credentials }
+ */
+connectionRoutes.post('/test-raw', async (req, res) => {
+  try {
+    const { account, username, authType, credentials } = req.body;
+    if (!account || !username || !authType || !credentials) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    const sfConfig = { account, username };
+
+    if (authType === 'pat') {
+      sfConfig.authenticator = 'PROGRAMMATIC_ACCESS_TOKEN';
+      sfConfig.token = credentials.token;
+    } else if (authType === 'keypair') {
+      sfConfig.authenticator = 'SNOWFLAKE_JWT';
+      sfConfig.privateKey = credentials.privateKey;
+      sfConfig.privateKeyPass = credentials.passphrase;
+    } else {
+      return res.status(400).json({ success: false, error: 'Invalid auth type' });
+    }
+
+    const CONNECTION_TIMEOUT = 30000;
+    let connection;
+
+    try {
+      connection = await Promise.race([
+        createSnowflakeConnection(sfConfig),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Connection timed out after 30 seconds. Check your account identifier and credentials.')), CONNECTION_TIMEOUT)
+        ),
+      ]);
+    } catch (connErr) {
+      return res.json({ success: false, error: connErr.message });
+    }
+
+    try {
+      const result = await executeQuery(connection, 'SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()');
+      const rolesResult = await executeQuery(connection, 'SHOW ROLES');
+      const roles = rolesResult.rows.map(r => r.name);
+
+      res.json({
+        success: true,
+        user: result.rows[0]['CURRENT_USER()'],
+        role: result.rows[0]['CURRENT_ROLE()'],
+        warehouse: result.rows[0]['CURRENT_WAREHOUSE()'],
+        roles,
+      });
+    } finally {
+      try { connection.destroy(); } catch {}
+    }
+  } catch (error) {
+    console.error('Test raw connection error:', error.message);
+    res.json({ success: false, error: error.message });
   }
 });
 
@@ -93,9 +153,6 @@ connectionRoutes.post('/', async (req, res) => {
     res.status(201).json({ connection });
   } catch (error) {
     console.error('Create connection error:', error);
-    if (error.code === '23505') { // Unique violation
-      return res.status(400).json({ error: 'A connection with this name already exists' });
-    }
     res.status(500).json({ error: error.message });
   }
 });

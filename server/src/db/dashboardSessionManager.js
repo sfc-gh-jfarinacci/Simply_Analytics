@@ -521,91 +521,101 @@ if (process.env.NODE_ENV !== 'production') {
  * - OAUTH (with access token)
  */
 export function createConnection(config) {
-  return new Promise((resolve, reject) => {
-    // Build connection options based on authenticator type
+  const cleanAccount = (config.account || '')
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\.snowflakecomputing\.com\/?$/, '')
+    .replace(/\/+$/, '');
 
-
-    const connectionOptions = {
-      account: config.account,
+  function buildOptions(patMode) {
+    const opts = {
+      account: cleanAccount,
       username: config.username || '',
-      
-      // Keep session alive - critical for long-running connections
       clientSessionKeepAlive: true,
-      clientSessionKeepAliveHeartbeatFrequency: 60, // Send heartbeat every 60 seconds (minimum is 30)
-      
-      // Disable HTTP keep-alive to ensure fresh TCP connections on reconnect
-      // This helps when IP changes (VPN) since old sockets would use old IP
+      clientSessionKeepAliveHeartbeatFrequency: 60,
       keepAlive: false,
+      timeout: 60000,
     };
-    
-    // Set authenticator-specific options
+
     if (config.authenticator) {
-      connectionOptions.authenticator = config.authenticator;
       if (config.authenticator === 'SNOWFLAKE_JWT') {
-        // Key pair authentication
-        connectionOptions.privateKey = config.privateKey;
-        connectionOptions.privateKeyPass = config.privateKeyPass;
+        opts.authenticator = 'SNOWFLAKE_JWT';
+        opts.privateKey = config.privateKey;
+        opts.privateKeyPass = config.privateKeyPass;
       } else if (config.authenticator === 'OAUTH') {
-        // OAuth with access token
-        connectionOptions.token = config.token;
+        opts.authenticator = 'OAUTH';
+        opts.token = config.token;
       } else if (config.authenticator === 'PROGRAMMATIC_ACCESS_TOKEN') {
-        connectionOptions.authenticator = 'SNOWFLAKE';
-        connectionOptions.password = config.token;
+        if (patMode === 'native') {
+          opts.authenticator = 'PROGRAMMATIC_ACCESS_TOKEN';
+          opts.token = config.token;
+        } else {
+          opts.authenticator = 'SNOWFLAKE';
+          opts.password = config.token;
+        }
+      } else {
+        opts.authenticator = config.authenticator;
       }
     } else {
-      // Default: password authentication
-      connectionOptions.authenticator = 'SNOWFLAKE';
-      connectionOptions.password = config.password;
+      opts.authenticator = 'SNOWFLAKE';
+      opts.password = config.password;
     }
-    
-    log('Creating Snowflake connection with options:', {
-      account: connectionOptions.account,
-      authenticator: connectionOptions.authenticator || 'PASSWORD',
-      username: connectionOptions.username || '(none)',
-      clientSessionKeepAlive: connectionOptions.clientSessionKeepAlive,
-    });
-    
-    // Set connection timeout (60 seconds for initial connection - PAT auth can be slow)
-    connectionOptions.timeout = 60000;
-    
-    const connection = snowflake.createConnection(connectionOptions);
-    
-    log('Connecting to Snowflake... (this may take 10-30 seconds)');
+    return opts;
+  }
 
-    // Use connectAsync for EXTERNALBROWSER (opens browser for SSO/OAuth)
-    if (config.authenticator === 'EXTERNALBROWSER') {
-      log('Starting EXTERNALBROWSER authentication (browser will open)...');
-      connection.connectAsync((err, conn) => {
-        if (err) {
-          console.error('Failed to connect to Snowflake:', err);
-          reject(err);
-        } else {
-          log('Successfully connected to Snowflake via OAuth');
-          resolve(conn);
-        }
+  function tryConnect(connectionOptions) {
+    return new Promise((resolve, reject) => {
+      const connection = snowflake.createConnection(connectionOptions);
+
+      if (config.authenticator === 'EXTERNALBROWSER') {
+        connection.connectAsync((err, conn) => {
+          if (err) reject(err);
+          else resolve(conn);
+        });
+      } else {
+        connection.connect((err, conn) => {
+          if (err) reject(err);
+          else resolve(conn);
+        });
+      }
+    });
+  }
+
+  return (async () => {
+    const isPAT = config.authenticator === 'PROGRAMMATIC_ACCESS_TOKEN';
+
+    // For PAT: try native auth first, fall back to password workaround
+    const attempts = isPAT ? ['native', 'password'] : [null];
+
+    for (const patMode of attempts) {
+      const opts = buildOptions(patMode);
+      log('Creating Snowflake connection:', {
+        account: opts.account, authenticator: opts.authenticator,
+        username: opts.username, patMode: patMode || 'n/a',
       });
-    } else {
-      connection.connect((err, conn) => {
-        if (err) {
-          console.error('Failed to connect to Snowflake:', err.message);
-          
-          // Provide helpful error messages
-          if (err.message?.includes('RETRY_LOGIN') || err.message?.includes('Incorrect username or password')) {
-            reject(new Error('Invalid username or password. Please check your credentials.'));
-          } else if (err.message?.includes('not exist') || err.message?.includes('not found')) {
-            reject(new Error(`Account "${connectionOptions.account}" not found. Check your account identifier format (e.g., "orgname-accountname" or "accountlocator.region").`));
-          } else if (err.message?.includes('MFA') || err.message?.includes('multi-factor')) {
-            reject(new Error('MFA is required for this account. Please use SSO/OAuth authentication instead.'));
-          } else {
-            reject(err);
-          }
-        } else {
-          log('Successfully connected to Snowflake');
-          resolve(conn);
+
+      try {
+        const conn = await tryConnect(opts);
+        log('Successfully connected to Snowflake' + (patMode ? ` (PAT mode: ${patMode})` : ''));
+        return conn;
+      } catch (err) {
+        if (isPAT && patMode === 'native') {
+          log(`PAT native auth failed (${err.message}), trying password fallback...`);
+          continue;
         }
-      });
+
+        console.error('Failed to connect to Snowflake:', err.message);
+        if (err.message?.includes('RETRY_LOGIN') || err.message?.includes('Incorrect username or password')) {
+          throw new Error('Invalid username or password. Please check your credentials.');
+        } else if (err.message?.includes('not exist') || err.message?.includes('not found')) {
+          throw new Error(`Account "${opts.account}" not found. Check your account identifier format (e.g., "orgname-accountname" or "accountlocator.region").`);
+        } else if (err.message?.includes('MFA') || err.message?.includes('multi-factor')) {
+          throw new Error('MFA is required for this account. Please use SSO/OAuth authentication instead.');
+        }
+        throw err;
+      }
     }
-  });
+  })();
 }
 
 /**

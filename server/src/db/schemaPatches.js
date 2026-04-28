@@ -145,6 +145,18 @@ const patches = [
       `CREATE INDEX IF NOT EXISTS idx_app_events_created ON app_events(created_at)`,
     ],
   },
+  {
+    version: 13,
+    name: 'drop_unique_connection_name_per_user',
+    check: `SELECT 1 WHERE NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE constraint_name = 'unique_connection_name_per_user'
+        AND table_name = 'snowflake_connections'
+    )`,
+    apply: [
+      `ALTER TABLE snowflake_connections DROP CONSTRAINT IF EXISTS unique_connection_name_per_user`,
+    ],
+  },
 ];
 
 const LATEST_VERSION = patches[patches.length - 1].version;

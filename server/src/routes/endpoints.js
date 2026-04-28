@@ -113,7 +113,7 @@ endpointRoutes.post('/validate', async (req, res) => {
         const connection = await getCachedDashboardConnection(wsConn.connection_id, null, '__validate__', {
           role: wsConn.role, warehouse: wsConn.warehouse,
         });
-        const queryResult = await executeQuery(connection, analystResult.sql);
+        const queryResult = await executeQuery(connection, analystResult.sql.replace(/;\s*$/, ''));
         result.preview = queryResult.rows.slice(0, 5);
         result.rowCount = queryResult.rows.length;
       }
@@ -516,9 +516,10 @@ async function runAnalystEndpoint(endpoint, queryParams, pagination) {
       : (endpoint.query_definition || {});
     const maxRows = Math.min(queryDef.limit || DEFAULT_QUERY_LIMIT, DEFAULT_QUERY_LIMIT);
 
+    const cleanSql = analystResult.sql.replace(/;\s*$/, '');
     const offset = (page - 1) * pageSize;
     const fetchSize = pageSize + 1;
-    const paginatedSql = `SELECT * FROM (${analystResult.sql}) __analyst LIMIT ${fetchSize} OFFSET ${offset}`;
+    const paginatedSql = `SELECT * FROM (${cleanSql}) __analyst LIMIT ${fetchSize} OFFSET ${offset}`;
     const result = await executeQuery(connection, paginatedSql);
 
     const hasMore = result.rows.length > pageSize;

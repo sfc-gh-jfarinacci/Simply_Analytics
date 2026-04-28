@@ -66,7 +66,6 @@ CREATE TABLE IF NOT EXISTS snowflake_connections (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   
-  CONSTRAINT unique_connection_name_per_user UNIQUE (user_id, name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_connections_user ON snowflake_connections(user_id);
