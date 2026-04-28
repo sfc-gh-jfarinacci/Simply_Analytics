@@ -87,17 +87,19 @@
 - Session timeout with inactivity tracking and single-session enforcement
 
 ### Web-Based Setup & Administration
-- **Guided setup wizard** — configure database, security keys, run migrations, and create the owner account entirely through the browser
-- **Encrypted configuration** — server config stored in AES-256-GCM encrypted file with a one-time master key
-- **Emergency access** — master key login when the database is unreachable
-- **Database migration wizard** — migrate all data to a new PostgreSQL instance with verification
-- **Key rotation** — rotate JWT secrets and encryption keys from the admin UI
+- **Guided setup wizard** — configure database credentials, security keys, run migrations, and create the owner account entirely through the browser
+- **Encrypted configuration** — server config stored in AES-256-GCM encrypted file with a downloadable recovery key
+- **Emergency access** — recovery key login when the database is unreachable
+- **Key rotation** — rotate JWT secrets, encryption keys, and recovery keys from the admin UI
+- **Automated backups** — scheduled `pg_dump` snapshots with retention policy, downloadable from the admin panel
+- **Backup & restore** — full backup/restore workflow with recovery key verification for cloud migration
 - **System monitoring** — uptime, memory usage, active sessions, and server health at a glance
 
-### Metadata Backend
-- **PostgreSQL** (recommended) or **Snowflake** as the metadata store
-- Full migration scripts for both backends with SSE-streamed progress logs
+### Infrastructure
+- **Bundled PostgreSQL** — metadata database runs as a Docker service with persistent volumes
+- **Bundled Redis** — session management, response caching, and rate limiting with in-memory fallback
 - **Auto-patching** — new tables and columns applied automatically on startup
+- **WAL archiving** — continuous write-ahead log archiving for point-in-time recovery
 
 ---
 
@@ -106,7 +108,6 @@
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL 14+ (or a Snowflake account for metadata)
 - A Snowflake account with Semantic Views
 
 ### Install
@@ -128,22 +129,22 @@ npm run dev
 1. Open http://localhost:5173
 2. Sign in with the bootstrap credentials: `admin` / `admin123`
 3. Follow the guided wizard:
-   - **Database** — choose PostgreSQL or Snowflake and enter connection details
+   - **Database** — set your PostgreSQL credentials (bundled in Docker, or provide your own for local dev)
    - **Security** — review auto-generated JWT and encryption keys
    - **Migrations** — schema creation runs automatically
    - **Owner** — create your permanent owner account
-4. Save the master encryption key when prompted — it won't be shown again
+4. Download the recovery key file when prompted — store it securely for backup/restore
 5. Sign in with your new owner account
 
-### Option B: Manual Configuration
+### Option B: Manual Configuration (Local Development)
 
-Create `server/.env` with the required variables (see [Configuration](#configuration) below):
+For local development without Docker, create `server/.env`:
 
 ```env
 NODE_ENV=development
 PORT=3001
 
-# PostgreSQL
+# PostgreSQL (you must provide your own instance for local dev)
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=your_user
@@ -183,14 +184,16 @@ This creates all tables and a default admin user (`admin` / `admin123`).
 docker compose up -d
 ```
 
-This starts two services:
+This starts four services:
 
 | Service | Port | Description |
 |---------|------|-------------|
-| `api` | 3001 | Express API server with encrypted config volume |
+| `postgres` | 5432 (internal) | PostgreSQL 16 metadata database with WAL archiving |
+| `redis` | 6379 (internal) | Redis 7 for sessions, caching, and rate limiting |
+| `api` | 3001 (internal) | Express API server with encrypted config volume |
 | `client` | 80 | Nginx serving the React SPA + API proxy |
 
-The database is **not** bundled — provide your own PostgreSQL or Snowflake instance and configure it through the setup wizard on first launch. Server configuration is persisted in a Docker volume (`config-data`) and encrypted with a master key generated on first launch.
+PostgreSQL and Redis are bundled and run as internal services — no external database setup required. Data is persisted across restarts via Docker volumes (`postgres-data`, `redis-data`, `config-data`, `backups-data`). Server configuration is encrypted with a recovery key generated during first-time setup.
 
 ---
 
@@ -198,13 +201,13 @@ The database is **not** bundled — provide your own PostgreSQL or Snowflake ins
 
 ### Encrypted Config Store
 
-When using the web-based setup wizard, all configuration is stored in an AES-256-GCM encrypted file (`data/config.json`). The master encryption key is:
+When using the web-based setup wizard, all configuration is stored in an AES-256-GCM encrypted file (`data/config.json`). The recovery key is:
 
 1. Read from the `MASTER_KEY` environment variable, or
 2. Read from a file at `MASTER_KEY_PATH`, or
 3. Auto-generated and stored at `data/.master-key`
 
-The master key is shown once during setup. Store it securely for emergency access.
+During setup, a recovery key file is generated for download. Store it securely — it is required for backup/restore and emergency access.
 
 ### Environment Variables (Manual Mode)
 
@@ -221,25 +224,12 @@ The master key is shown once during setup. Store it securely for emergency acces
 | `JWT_EXPIRY` | Token expiry duration | `8h` |
 | `CREDENTIALS_ENCRYPTION_KEY` | AES-256 key for credential encryption | — |
 | `CORS_ORIGINS` | Comma-separated allowed origins | — |
-| `METADATA_BACKEND` | `postgres` or `snowflake` | `postgres` |
 | `SESSION_TIMEOUT_MINUTES` | Inactivity timeout | `20` |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 
-### SSO (Optional)
+### SSO & SCIM (Optional)
 
-```env
-SSO_ENABLED=true
-SAML_ENTRYPOINT=https://your-idp.example.com/sso/saml
-SAML_ISSUER=simply-analytics
-SAML_CALLBACK_URL=https://your-app.example.com/api/v1/saml/callback
-SAML_CERT=<Base64 IdP signing certificate>
-```
-
-### SCIM Provisioning (Optional)
-
-```env
-SCIM_ENABLED=true
-SCIM_BEARER_TOKEN=your-scim-token
-```
+SAML SSO and SCIM provisioning are configured from the **Admin Panel > SSO & Provisioning** tab — no environment variables required. The SCIM bearer token is auto-generated by the application and displayed for you to copy into your IdP configuration.
 
 ---
 
@@ -256,18 +246,20 @@ SCIM_BEARER_TOKEN=your-scim-token
 │                      Express API Server                          │
 │  Auth · SAML SSO · SCIM · MFA · Dashboard · Ask · Consumption   │
 │  Workspaces · Endpoints · Platform Models · Event Tracking       │
-│  Encrypted Config Store · Helmet · Rate Limit                    │
-└──────────────┬─────────────────────────────────┬─────────────────┘
-               │                                 │
-         PostgreSQL                       Snowflake SDK
-               │                                 │
-┌──────────────┴─────────────────┐  ┌────────────┴────────────────┐
-│   Metadata + Config            │  │   Snowflake Data Cloud      │
-│   Users · Dashboards · Ask     │  │   Semantic Views            │
-│   Workspaces · Endpoints       │  │   Cortex Analyst REST API   │
-│   App Events · Audit Log       │  │   Cortex REST API           │
-│   Encrypted Credentials        │  │   Queries · AI Insights     │
-└────────────────────────────────┘  └─────────────────────────────┘
+│  Encrypted Config Store · Helmet · Rate Limit · Redis Cache      │
+└──────┬──────────────────┬─────────────────────────┬──────────────┘
+       │                  │                         │
+  PostgreSQL           Redis                 Snowflake SDK
+       │                  │                         │
+┌──────┴────────┐  ┌──────┴────────┐  ┌─────────────┴─────────────┐
+│  Metadata     │  │  Sessions     │  │   Snowflake Data Cloud    │
+│  Users        │  │  Cache        │  │   Semantic Views          │
+│  Dashboards   │  │  Rate Limits  │  │   Cortex Analyst REST API │
+│  Workspaces   │  └───────────────┘  │   Cortex REST API         │
+│  Ask · Events │                     │   Queries · AI Insights   │
+│  Encrypted    │                     └───────────────────────────┘
+│  Credentials  │
+└───────────────┘
 ```
 
 ### Project Structure
@@ -296,7 +288,7 @@ simply-analytics/
 ├── server/                     # Express API
 │   ├── src/
 │   │   ├── config/             # Encrypted config store & hot reload
-│   │   ├── db/                 # PostgreSQL + Snowflake backends
+│   │   ├── db/                 # PostgreSQL backend, Redis, session manager
 │   │   ├── middleware/         # Auth, rate limiting, session management
 │   │   ├── routes/             # API endpoints (19 route files)
 │   │   ├── services/           # Business logic (24 services)
@@ -314,12 +306,12 @@ simply-analytics/
 | Layer | Technologies |
 |-------|-------------|
 | **Frontend** | React 18, Vite, Zustand, D3.js, ECharts, AG Grid, TanStack Table/Virtual, GridStack, @dnd-kit, React Router 7, html-to-image, jsPDF |
-| **Backend** | Express, PostgreSQL, Snowflake SDK |
+| **Backend** | Express, PostgreSQL, Redis, Snowflake SDK |
 | **AI** | Snowflake Cortex Analyst REST API, Cortex REST API, OpenAI, Anthropic, AWS Bedrock, GCP Vertex AI, Azure OpenAI |
 | **Auth** | JWT, bcrypt, SAML 2.0, SCIM 2.0, TOTP, WebAuthn/FIDO2 |
 | **Security** | AES-256-GCM (credentials + config + messages), Helmet, express-rate-limit |
 | **Testing** | Vitest, Playwright, supertest |
-| **Infra** | Docker, Nginx |
+| **Infra** | Docker, Docker Compose, Nginx |
 
 ---
 
@@ -329,7 +321,7 @@ simply-analytics/
 |------|-----------|-------|-------------|-------|-------------|-------|
 | **Owner** | Full access | Full access + manage workspaces | Manage | Manage all | Full access | Full admin |
 | **Admin** | Create & edit | Access via workspace groups | Manage | Manage | Full access | — |
-| **Editor** | Create & edit | Access via workspace groups | View | — | — | — |
+| **Editor** | Create & edit | Access via workspace groups | View | Add members | — | — |
 | **Viewer** | View only | Access via workspace groups | — | — | — | — |
 
 ---
@@ -370,8 +362,8 @@ simply-analytics/
 | `GET/POST /api/v1/platform/*` | Platform model catalog management |
 | `GET/PUT /api/v1/admin/config` | Admin configuration |
 | `POST /api/v1/admin/migrate` | Schema migrations (SSE) |
-| `POST /api/v1/admin/migrate-data` | Data migration (SSE) |
-| `POST /api/v1/admin/rotate-key/:type` | Key rotation (jwt/encryption) |
+| `POST /api/v1/admin/rotate-key/:type` | Key rotation (jwt/encryption/recovery) |
+| `GET/POST /api/v1/admin/backups/*` | Backup management (list, create, download, restore) |
 | `GET /api/v1/admin/system` | System health info |
 | `GET/POST /api/v1/setup/*` | Initial setup wizard |
 
@@ -412,11 +404,6 @@ E2E tests use [Playwright](https://playwright.dev/) and automatically start the 
 
 ## Troubleshooting
 
-**PostgreSQL permissions:**
-```sql
-GRANT ALL PRIVILEGES ON DATABASE simply_analytics TO your_user;
-```
-
 **Port conflict:**
 ```bash
 lsof -ti:3001 | xargs kill -9
@@ -425,11 +412,18 @@ lsof -ti:3001 | xargs kill -9
 **Snowflake network policy errors:**
 Ensure your IP is allowlisted or connect through VPN, then use the Reconnect button.
 
-**Lost master key:**
-If you lose the master encryption key, delete `data/config.json` and `data/.master-key`, then re-run the setup wizard. All configuration will need to be re-entered.
+**Lost recovery key:**
+If you lose the recovery key file, delete `data/config.json` and `data/.master-key`, then re-run the setup wizard. All configuration will need to be re-entered. Backups encrypted with the old key cannot be restored.
 
 **Emergency database access:**
-If the database is unreachable, use the master key to sign in via the emergency login flow. Update your database credentials from the admin panel, then sign out and back in normally.
+If the database is unreachable, use the recovery key to sign in via the emergency login flow. Update your database credentials from the admin panel, then sign out and back in normally.
+
+**Docker volume persistence:**
+All data is stored in Docker volumes. To reset the application completely:
+```bash
+docker compose down -v
+docker compose up -d
+```
 
 ---
 
