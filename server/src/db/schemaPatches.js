@@ -157,6 +157,15 @@ const patches = [
       `ALTER TABLE snowflake_connections DROP CONSTRAINT IF EXISTS unique_connection_name_per_user`,
     ],
   },
+  {
+    version: 14,
+    name: 'rename_editor_role_to_developer',
+    check: `SELECT 1 FROM pg_enum WHERE enumlabel = 'developer' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')`,
+    apply: [
+      `ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'developer'`,
+      `UPDATE users SET role = 'developer' WHERE role = 'editor'`,
+    ],
+  },
 ];
 
 const LATEST_VERSION = patches[patches.length - 1].version;

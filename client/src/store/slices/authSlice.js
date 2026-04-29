@@ -129,7 +129,7 @@ export const createAuthSlice = (set, get) => ({
       isAuthenticated: true,
       currentUser: response.user || { username },
       currentRole: role,
-      availableRoles: role === 'bootstrap_admin' ? ['bootstrap_admin'] : ['viewer', 'editor', 'admin', 'owner'],
+      availableRoles: role === 'bootstrap_admin' ? ['bootstrap_admin'] : ['viewer', 'developer', 'admin', 'owner'],
       isConnecting: false,
       connectionError: null,
       currentDashboard: null,

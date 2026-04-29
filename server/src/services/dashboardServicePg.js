@@ -3,7 +3,7 @@ import { query, transaction, now } from '../db/db.js';
 import { isWorkspaceMember } from './workspaceService.js';
 
 export async function getDashboardsForUser(userId, userAppRole, workspaceId = null) {
-  const effectiveLevel = ['owner', 'admin', 'editor'].includes(userAppRole) ? 'edit' : 'view';
+  const effectiveLevel = ['owner', 'admin', 'developer'].includes(userAppRole) ? 'edit' : 'view';
   const isAdminOrOwner = ['owner', 'admin'].includes(userAppRole);
 
   let result;
@@ -153,7 +153,7 @@ export async function checkDashboardAccess(dashboardId, userId, requiredLevel = 
 
   const getEffectiveLevel = (appRole) => {
     switch (appRole) {
-      case 'editor':
+      case 'developer':
         return 'edit';
       case 'viewer':
       default:
@@ -407,7 +407,7 @@ export async function transferOwnership(dashboardId, newOwnerId, currentOwnerId)
   }
 
   const newOwner = await query(
-    "SELECT id, role FROM users WHERE id = $1 AND role IN ('owner', 'admin', 'editor')",
+    "SELECT id, role FROM users WHERE id = $1 AND role IN ('owner', 'admin', 'developer')",
     [newOwnerId]
   );
 

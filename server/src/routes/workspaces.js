@@ -308,7 +308,7 @@ workspaceRoutes.post('/:id/members', async (req, res) => {
   try {
     const access = await workspaceService.checkWorkspaceAccess(req.params.id, req.user.id, req.user.role);
     if (!access) return res.status(404).json({ error: 'Workspace not found' });
-    const canAddMembers = ['owner', 'admin'].includes(access.accessLevel) || req.user.role === 'editor';
+    const canAddMembers = ['owner', 'admin'].includes(access.accessLevel) || req.user.role === 'developer';
     if (!canAddMembers) {
       return res.status(403).json({ error: 'Only workspace owner, admin, or creator can add members' });
     }

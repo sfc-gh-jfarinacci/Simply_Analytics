@@ -31,8 +31,8 @@ export default function DashboardBrowser() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef(null);
 
-  const canCreateDashboards = ['owner', 'admin', 'editor'].includes(currentRole);
-  const canManageFolders = ['owner', 'admin', 'editor'].includes(currentRole);
+  const canCreateDashboards = ['owner', 'admin', 'developer'].includes(currentRole);
+  const canManageFolders = ['owner', 'admin', 'developer'].includes(currentRole);
 
   const handleContextMenu = (e, item) => {
     setContextMenu({ x: e.clientX, y: e.clientY, ...item });

@@ -99,7 +99,7 @@ router.get('/:id/path', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     // Only owners, admins, and editors can create folders
-    if (!['owner', 'admin', 'editor'].includes(req.user.role)) {
+    if (!['owner', 'admin', 'developer'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Insufficient permissions to create folders' });
     }
     

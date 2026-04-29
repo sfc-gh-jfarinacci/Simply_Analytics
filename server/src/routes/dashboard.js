@@ -75,7 +75,7 @@ async function requireMfaForEdit(req, res, next) {
   }
   
   // Elevated roles (editor, admin, owner) must have MFA to create/edit
-  if (['editor', 'admin', 'owner'].includes(req.user.role)) {
+  if (['developer', 'admin', 'owner'].includes(req.user.role)) {
     const hasMfa = await hasMfaEnabled(req.user.id);
     if (!hasMfa) {
       return res.status(403).json({ 
@@ -275,7 +275,7 @@ dashboardRoutes.post('/', requireMfaForEdit, async (req, res, next) => {
       });
     }
 
-    if (!['owner', 'admin', 'editor'].includes(req.user.role)) {
+    if (!['owner', 'admin', 'developer'].includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         error: 'Only owners, admins, and editors can create dashboards.',

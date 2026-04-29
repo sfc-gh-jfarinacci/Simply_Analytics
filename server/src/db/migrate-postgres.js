@@ -744,35 +744,24 @@ async function runMigration() {
       console.log('   ⚠️  Could not create/update admin user:', adminErr.message);
     }
 
-    // Rename 'creator' role to 'editor'
+    // Migrate legacy roles: creator -> editor -> developer
     try {
-      const creatorCheck = await pool.query(`
-        SELECT 1 FROM pg_enum 
-        WHERE enumlabel = 'creator' 
+      const devCheck = await pool.query(`
+        SELECT 1 FROM pg_enum
+        WHERE enumlabel = 'developer'
         AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')
       `);
-      if (creatorCheck.rows.length > 0) {
-        // Add 'editor' if it doesn't exist yet
-        const editorCheck = await pool.query(`
-          SELECT 1 FROM pg_enum 
-          WHERE enumlabel = 'editor' 
-          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')
-        `);
-        if (editorCheck.rows.length === 0) {
-          await pool.query(`ALTER TYPE user_role ADD VALUE 'editor'`);
-        }
-        // Migrate existing users from 'creator' to 'editor'
-        const updated = await pool.query(`UPDATE users SET role = 'editor' WHERE role = 'creator'`);
-        if (updated.rowCount > 0) {
-          console.log(`   ✅ Renamed 'creator' role to 'editor' for ${updated.rowCount} user(s)`);
-        } else {
-          console.log("   ✓ No users with 'creator' role to migrate");
-        }
+      if (devCheck.rows.length === 0) {
+        await pool.query(`ALTER TYPE user_role ADD VALUE 'developer'`);
+      }
+      const updated = await pool.query(`UPDATE users SET role = 'developer' WHERE role IN ('creator', 'editor')`);
+      if (updated.rowCount > 0) {
+        console.log(`   ✅ Migrated legacy roles to 'developer' for ${updated.rowCount} user(s)`);
       } else {
-        console.log("   ✓ Role 'creator' already removed or 'editor' in use");
+        console.log("   ✓ No legacy roles to migrate");
       }
     } catch (migrateErr) {
-      console.log('   ⚠️  Could not rename creator role:', migrateErr.message);
+      console.log('   ⚠️  Could not migrate legacy roles:', migrateErr.message);
     }
 
     // Show initial admin user info

@@ -87,9 +87,9 @@ export const useUserManagement = (currentUser, currentRole, toast) => {
   };
 
   const getAssignableRoles = () => {
-    if (currentRole === 'owner') return ['admin', 'editor', 'viewer'];
-    if (currentRole === 'admin') return ['editor', 'viewer'];
-    if (currentRole === 'editor') return ['viewer'];
+    if (currentRole === 'owner') return ['admin', 'developer', 'viewer'];
+    if (currentRole === 'admin') return ['developer', 'viewer'];
+    if (currentRole === 'developer') return ['viewer'];
     return [];
   };
 

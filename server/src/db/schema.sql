@@ -9,7 +9,7 @@
 -- ============================================
 
 -- User roles/privileges enum
-CREATE TYPE user_role AS ENUM ('owner', 'admin', 'editor', 'viewer');
+CREATE TYPE user_role AS ENUM ('owner', 'admin', 'developer', 'viewer');
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (

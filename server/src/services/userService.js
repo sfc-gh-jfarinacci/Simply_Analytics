@@ -8,7 +8,7 @@ const SALT_ROUNDS = 10;
 const ROLE_HIERARCHY = {
   owner: 4,
   admin: 3,
-  editor: 2,
+  developer: 2,
   viewer: 1,
 };
 
@@ -123,11 +123,11 @@ export async function updateUserRole(userId, newRole, assignerUser) {
   if (assignerUser.role === 'owner') {
   } else if (assignerUser.role === 'admin') {
     if (newRole === 'owner' || newRole === 'admin') {
-      throw new Error('Admins can only assign editor or viewer roles');
+      throw new Error('Admins can only assign developer or viewer roles');
     }
-  } else if (assignerUser.role === 'editor') {
+  } else if (assignerUser.role === 'developer') {
     if (newRole !== 'viewer') {
-      throw new Error('Editors can only assign viewer role');
+      throw new Error('Developers can only assign viewer role');
     }
   } else {
     throw new Error('You do not have permission to assign roles');
@@ -152,12 +152,12 @@ export async function updateUserRole(userId, newRole, assignerUser) {
     throw new Error('Cannot change role of a locked account. Unlock the account first.');
   }
 
-  if (['admin', 'editor'].includes(newRole) && !['admin', 'editor', 'owner'].includes(targetUser.role)) {
+  if (['admin', 'developer'].includes(newRole) && !['admin', 'developer', 'owner'].includes(targetUser.role)) {
     const row = lockCheck.rows[0];
     const hasMfa = row?.auth_provider === 'saml' || row?.totp_enabled || row?.passkey_enabled;
     
     if (!hasMfa) {
-      throw new Error(`Cannot promote to ${newRole === 'admin' ? 'Admin' : 'Editor'} role. User must have 2FA (TOTP or Passkey) enabled or use SSO first.`);
+      throw new Error(`Cannot promote to ${newRole === 'admin' ? 'Admin' : 'Developer'} role. User must have 2FA (TOTP or Passkey) enabled or use SSO first.`);
     }
   }
 

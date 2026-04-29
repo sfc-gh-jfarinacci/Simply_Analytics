@@ -5,7 +5,7 @@ import configStore from '../config/configStore.js';
 
 const ROLE_MAP = {
   admin: 'admin',
-  editor: 'editor',
+  developer: 'developer',
   viewer: 'viewer',
 };
 

@@ -85,7 +85,7 @@ export default function WorkspacesView() {
   const endpointMenuRef = useRef(null);
 
   const isAdmin = ['owner', 'admin'].includes(currentRole);
-  const canAddMembers = ['owner', 'admin', 'editor'].includes(currentRole);
+  const canAddMembers = ['owner', 'admin', 'developer'].includes(currentRole);
   const hasSecureAuth = currentUser?.auth_provider === 'saml' ||
     currentUser?.totp_enabled || currentUser?.passkey_enabled;
   const hasWorkspaces = workspaces.length > 0;
@@ -226,6 +226,8 @@ export default function WorkspacesView() {
   useEffect(() => {
     if (activeWorkspace?.id) {
       loadDetail(activeWorkspace.id);
+      loadEndpoints();
+      loadApiKeys();
       askApi.listConversations(activeWorkspace.id)
         .then(res => setAskConversations(res.conversations || []))
         .catch(console.error);
@@ -233,7 +235,7 @@ export default function WorkspacesView() {
       setWsDetail(null);
       setAskConversations([]);
     }
-  }, [activeWorkspace?.id, loadDetail]);
+  }, [activeWorkspace?.id, loadDetail, loadEndpoints, loadApiKeys]);
 
   useEffect(() => {
     if (activeWorkspace?.id && location.pathname === '/workspaces')

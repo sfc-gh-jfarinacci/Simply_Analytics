@@ -20,6 +20,10 @@
   <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" />
 </p>
 
+<p align="center">
+  <img src="app_video.gif" alt="Simply Analytics Demo" width="800" />
+</p>
+
 ---
 
 ## Features
@@ -80,7 +84,7 @@
 - **Multi-factor authentication** — TOTP (Google Authenticator, Authy) and FIDO2 Passkeys (WebAuthn)
 - **SAML 2.0 SSO** — Okta, Microsoft Entra ID, or any SAML IdP
 - **SCIM 2.0** — automated user and group provisioning
-- **RBAC** — Owner, Admin, Editor, Viewer roles with group-based dashboard and workspace access
+- **RBAC** — Owner, Admin, Developer, Viewer roles with group-based dashboard and workspace access
 - AES-256-GCM credential encryption at rest with key rotation
 - Rate limiting, account lockout, audit logging, Helmet security headers
 - Session timeout with inactivity tracking and single-session enforcement
@@ -246,7 +250,7 @@ simply-analytics/
 |------|-----------|-------|-------------|-------|-------------|-------|
 | **Owner** | Full access | Full access + manage workspaces | Manage | Manage all | Full access | Full admin |
 | **Admin** | Create & edit | Access via workspace groups | Manage | Manage | Full access | — |
-| **Editor** | Create & edit | Access via workspace groups | View | Add members | — | — |
+| **Developer** | Create & edit | Access via workspace groups | View | Add members | — | — |
 | **Viewer** | View only | Access via workspace groups | — | — | — | — |
 
 ---
