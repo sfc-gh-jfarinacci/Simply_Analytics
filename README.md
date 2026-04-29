@@ -26,7 +26,7 @@
 
 ---
 
-## Features
+## Features (Present + planned)
 
 ### Dashboards
 - **20+ visualization types** — vertical bar, horizontal bar, diverging bar, line, area, pie, donut, scatter, heatmap, treemap, icicle, sankey, funnel, waterfall, radar, histogram, box plot, choropleth map, hexbin map, gauge, metric cards, data tables
